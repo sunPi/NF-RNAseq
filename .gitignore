@@ -1,49 +1,102 @@
-# History files
+# NF-RNAseq initial release exclusions
+
+###############################################################################
+# Generated reference databases and local installations
+###############################################################################
+
+/db/*
+/GRCh38/
+
+###############################################################################
+# Development data, analysis outputs, and archived code
+###############################################################################
+
+/results/
+/test_data/
+/logs/
+/archive/
+/inputs/
+/data/
+
+###############################################################################
+# Future Nextflow modules and bundled third-party development resources
+#
+# The current shell installer/runtime requires only the QC validator.
+###############################################################################
+
+/modules/*
+!/modules/qc/
+/modules/qc/*
+!/modules/qc/qc_validator.py
+
+###############################################################################
+# Nextflow runtime and future-development artifacts
+###############################################################################
+
+/work/
+/.nextflow/
+/.nextflow.log*
+/trace.txt
+/timeline.html
+/report.html
+/dag.html
+
+###############################################################################
+# Local R and renv state
+###############################################################################
+
 .Rhistory
 .Rapp.history
-
-# Session Data files
 .RData
 .RDataTmp
-
-# User-specific files
 .Ruserdata
-
-# Example code in package build process
-*-Ex.R
-
-# Output files from R CMD build
-/*.tar.gz
-
-# Output files from R CMD check
-/*.Rcheck/
-
-# RStudio files
+.Renviron
 .Rproj.user/
 
-# produced vignettes
-vignettes/*.html
-vignettes/*.pdf
+/renv/library/
+/renv/local/
+/renv/staging/
+/renv/cellar/
+/renv/cache/
 
-# OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
-.httr-oauth
+# Developer-only renv initialization/project files. Releases restore from
+# renv.lock via setup/scripts/restore_renv.R.
+/setup/scripts/initialize_renv.R
+/setup/scripts/scripts.Rproj
 
-# knitr and R markdown default cache directories
+###############################################################################
+# Sequencing data and generated bioinformatics files
+###############################################################################
+
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+*.bam
+*.bai
+*.cram
+*.crai
+
+###############################################################################
+# Build products, backups, logs, and temporary files
+###############################################################################
+
+*.o
+*.a
+*.so
+*.bak
+*.tmp
+*.log
+*.out
+*.err
+*~
+
+*.Rcheck/
+*-Ex.R
 *_cache/
 /cache/
-
-# Temporary files created by R markdown
 *.utf8.md
 *.knit.md
 
-# R Environment Variables
-.Renviron
-
-# pkgdown site
-docs/
-
-# translation temp files
-po/*~
-
-# RStudio Connect folder
-rsconnect/
+.httr-oauth
+.DS_Store
