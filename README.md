@@ -1,5 +1,7 @@
 # NF-RNAseq
 
+This is an automated RNA-seq pipeline that produces analysis-ready data in the form of gene expression matrices, where it uses FASTQ files as inputs.
+
 Installation:
 
 Run `Rscript setup/scripts/initialize_renv.R` to initialize the renv
