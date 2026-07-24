@@ -162,30 +162,60 @@ case "$(uname -m)" in
             conda run --name "$CONDA_ENV" \
                 sh -c 'command -v STAR-Fusion'
         )"
+        FUSION_INSPECTOR_EXECUTABLE="$(
+            conda run --name "$CONDA_ENV" \
+                sh -c 'command -v FusionInspector'
+        )"
         ;;
     aarch64|arm64)
         require_command make
 
         STAR_FUSION_SOURCE="${MODULE_DB_ROOT}/tools/STAR-Fusion-v${STAR_FUSION_VERSION}"
-        STAR_FUSION_EXECUTABLE="${STAR_FUSION_SOURCE}/STAR-Fusion"
+        STAR_FUSION_PROGRAM="${STAR_FUSION_SOURCE}/STAR-Fusion"
+        STAR_FUSION_EXECUTABLE="${MODULE_DB_ROOT}/tools/STAR-Fusion"
+        FUSION_INSPECTOR_EXECUTABLE="${STAR_FUSION_SOURCE}/FusionInspector/FusionInspector"
+        STAR_FUSION_BUILD_MARKER="${STAR_FUSION_SOURCE}/.fusion-module-build-complete"
+        STAR_FUSION_PLUGIN_PM="${STAR_FUSION_SOURCE}/PerlLib/Set/IntervalTree.pm"
+        STAR_FUSION_PLUGIN_SO="${STAR_FUSION_SOURCE}/PerlLib/auto/Set/IntervalTree/IntervalTree.so"
+        SYSTEM_PERL="${FUSION_SYSTEM_PERL:-/usr/bin/perl}"
         STAR_FUSION_ARCHIVE_NAME="STAR-Fusion-v${STAR_FUSION_VERSION}.FULL.tar.gz"
         STAR_FUSION_ARCHIVE="${DOWNLOAD_DIR}/${STAR_FUSION_ARCHIVE_NAME}"
         STAR_FUSION_URL="https://github.com/STAR-Fusion/STAR-Fusion/releases/download/STAR-Fusion-v${STAR_FUSION_VERSION}/${STAR_FUSION_ARCHIVE_NAME}"
 
-        if [[ ! -x "$STAR_FUSION_EXECUTABLE" ]]; then
-            if [[ -e "$STAR_FUSION_SOURCE" ]]; then
-                die "Incomplete STAR-Fusion source directory exists: $STAR_FUSION_SOURCE"
-            fi
-
+        if [[ ! -d "$STAR_FUSION_SOURCE" ]]; then
             download_file "$STAR_FUSION_URL" "$STAR_FUSION_ARCHIVE"
             log_info "Extracting the full STAR-Fusion release for $(uname -m)"
             tar -xzf "$STAR_FUSION_ARCHIVE" -C "${MODULE_DB_ROOT}/tools"
             [[ -d "$STAR_FUSION_SOURCE" ]] ||
                 die "STAR-Fusion archive did not create: $STAR_FUSION_SOURCE"
-            make -C "$STAR_FUSION_SOURCE"
-        else
-            log_info "STAR-Fusion full-release installation already exists"
         fi
+
+        [[ -x "$SYSTEM_PERL" ]] ||
+            die "System Perl was not found for the ARM build: $SYSTEM_PERL"
+
+        if [[ -s "$STAR_FUSION_PLUGIN_PM" &&
+              -s "$STAR_FUSION_PLUGIN_SO" ]] &&
+           "$SYSTEM_PERL" -I "$STAR_FUSION_SOURCE/PerlLib" \
+               -MSet::IntervalTree -e 'exit 0' 2>/dev/null; then
+            printf 'STAR-Fusion %s plugins_only\n' "$STAR_FUSION_VERSION" \
+                > "$STAR_FUSION_BUILD_MARKER"
+            log_info "STAR-Fusion's required Perl plugin is already built"
+        else
+            make -C "${STAR_FUSION_SOURCE}/plugins" clean
+            log_info "Building STAR-Fusion's required Perl plugin"
+            env PATH="/usr/bin:/bin" \
+                make -C "$STAR_FUSION_SOURCE" plugins_only
+            "$SYSTEM_PERL" -I "$STAR_FUSION_SOURCE/PerlLib" \
+                -MSet::IntervalTree -e 'exit 0'
+            printf 'STAR-Fusion %s plugins_only\n' "$STAR_FUSION_VERSION" \
+                > "$STAR_FUSION_BUILD_MARKER"
+        fi
+
+        {
+            printf '#!/usr/bin/env bash\n'
+            printf 'exec %q %q "$@"\n' "$SYSTEM_PERL" "$STAR_FUSION_PROGRAM"
+        } > "$STAR_FUSION_EXECUTABLE"
+        chmod +x "$STAR_FUSION_EXECUTABLE"
         ;;
     *)
         die "Unsupported CPU architecture for STAR-Fusion: $(uname -m)"
@@ -194,7 +224,10 @@ esac
 
 [[ -x "$STAR_FUSION_EXECUTABLE" ]] ||
     die "STAR-Fusion executable was not installed: $STAR_FUSION_EXECUTABLE"
+[[ -x "$FUSION_INSPECTOR_EXECUTABLE" ]] ||
+    die "FusionInspector executable was not installed: $FUSION_INSPECTOR_EXECUTABLE"
 "$STAR_FUSION_EXECUTABLE" --version >/dev/null
+"$FUSION_INSPECTOR_EXECUTABLE" --version >/dev/null
 
 CTAT_URL="${FUSION_CTAT_URL:-${CTAT_BASE_URL}/${CTAT_ARCHIVE_NAME}}"
 CTAT_ARCHIVE="${DOWNLOAD_DIR}/${CTAT_ARCHIVE_NAME}"
@@ -295,6 +328,7 @@ CONFIG_FILE="${CONFIG_DIR}/${ASSEMBLY}.config"
     printf 'FUSION_ARRIBA_KNOWN_FUSIONS=%q\n' "$ARRIBA_KNOWN_FUSIONS"
     printf 'FUSION_ARRIBA_PROTEIN_DOMAINS=%q\n' "$ARRIBA_PROTEIN_DOMAINS"
     printf 'FUSION_STAR_FUSION_EXECUTABLE=%q\n' "$STAR_FUSION_EXECUTABLE"
+    printf 'FUSION_INSPECTOR_EXECUTABLE=%q\n' "$FUSION_INSPECTOR_EXECUTABLE"
     printf 'FUSION_CONDA_ENV=%q\n' "$CONDA_ENV"
 } > "$CONFIG_FILE"
 

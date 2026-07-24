@@ -34,6 +34,9 @@ Options:
                               Assembly-matched protein-domain database
   --star-fusion-executable FILE
                               STAR-Fusion executable; default: search PATH
+  --fusion-inspector-executable FILE
+                              FusionInspector executable; default: search PATH
+  --skip-fusion-inspector     Skip validation/remapping of STAR-Fusion calls
   --keep-arriba-bam           Retain Arriba's intermediate chimeric BAM
   -h, --help                  Show this help
 
@@ -68,6 +71,8 @@ ARRIBA_BLACKLIST=""
 ARRIBA_KNOWN_FUSIONS=""
 ARRIBA_PROTEIN_DOMAINS=""
 STAR_FUSION_EXECUTABLE="STAR-Fusion"
+FUSION_INSPECTOR_EXECUTABLE="FusionInspector"
+RUN_FUSION_INSPECTOR=true
 KEEP_ARRIBA_BAM=false
 
 while (( $# > 0 )); do
@@ -131,6 +136,15 @@ while (( $# > 0 )); do
             [[ $# -ge 2 ]] || die "--star-fusion-executable requires a value"
             STAR_FUSION_EXECUTABLE="$2"
             shift 2
+            ;;
+        --fusion-inspector-executable)
+            [[ $# -ge 2 ]] || die "--fusion-inspector-executable requires a value"
+            FUSION_INSPECTOR_EXECUTABLE="$2"
+            shift 2
+            ;;
+        --skip-fusion-inspector)
+            RUN_FUSION_INSPECTOR=false
+            shift
             ;;
         --keep-arriba-bam)
             KEEP_ARRIBA_BAM=true
@@ -210,6 +224,44 @@ run_star_fusion() {
     ' "$predictions" > "$sample_predictions"
 
     require_file "$sample_predictions"
+
+    if [[ "$RUN_FUSION_INSPECTOR" == true ]]; then
+        run_fusion_inspector "$predictions"
+    fi
+}
+
+run_fusion_inspector() {
+    local predictions="$1"
+    local inspector_dir="${OUTPUT_DIR}/fusion-inspector"
+    local inspector_output="${inspector_dir}/${SAMPLE}.FusionInspector.fusions.abridged.tsv"
+    local -a inspector_read_arguments
+
+    if [[ "$FUSION_INSPECTOR_EXECUTABLE" == */* ]]; then
+        [[ -x "$FUSION_INSPECTOR_EXECUTABLE" ]] ||
+            die "FusionInspector executable was not found: $FUSION_INSPECTOR_EXECUTABLE"
+    else
+        require_command "$FUSION_INSPECTOR_EXECUTABLE"
+    fi
+
+    inspector_read_arguments=(--left_fq "$READ1")
+    if [[ "$READ_LAYOUT" == "paired" ]]; then
+        inspector_read_arguments+=(--right_fq "$READ2")
+    fi
+
+    mkdir -p "$inspector_dir"
+    log_info "Validating and quantifying fusions with FusionInspector for $SAMPLE"
+    "$FUSION_INSPECTOR_EXECUTABLE" \
+        --fusions "$predictions" \
+        "${inspector_read_arguments[@]}" \
+        --genome_lib_dir "$CTAT_GENOME_LIB" \
+        --output_dir "$inspector_dir" \
+        --out_prefix "$SAMPLE" \
+        --CPU "$THREADS" \
+        --annotate \
+        --examine_coding_effect \
+        --cleanup
+
+    require_file "$inspector_output"
 }
 
 run_arriba() {
