@@ -123,26 +123,29 @@ Run
 ```
 
 Run paired-end data:
-./main.sh \
-  --assembly GRCh38 \
-  --layout paired \
-  --experiment study_01 \
-  --input /path/to/fastq
+ ./main.sh \
+   --assembly GRCh38 \
+   --layout paired \
+   --experiment study_01 \
+   --input /path/to/fastq
+
 Run single-end data:
-./main.sh \
-  --assembly GRCh38 \
-  --layout single \
-  --experiment study_01 \
-  --input /path/to/fastq
+ ./main.sh \
+   --assembly GRCh38 \
+   --layout single \
+   --experiment study_01 \
+   --input /path/to/fastq
+
 Results are written below:
-results/<experiment>/
+ results/<experiment>/
+
 The main outputs include:
-Per-sample FastQC and fastp reports
-STAR alignments
-RSEM gene and isoform results
-Sample QC classifications
-Expected-count matrix
-TPM matrix
+ - Per-sample FastQC and fastp reports
+ - STAR alignments
+ - RSEM gene and isoform results
+ - Sample QC classifications
+ - Expected-count matrix
+ - TPM matrix
 
 ```
 
