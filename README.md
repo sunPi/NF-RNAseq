@@ -146,8 +146,25 @@ The main outputs include:
  - Sample QC classifications
  - Expected-count matrix
  - TPM matrix
+ - FPKM matrix
+ - MultiQC report
 
 ```
 
-FPKM matrix
-MultiQC report
+4. Optional Modules
+
+The following modules are planned for future releases and are not included in
+
+Core Module 1.0:
+ - Nextflow workflow execution
+ - Immune-cell deconvolution
+ - ssGSEA pathway analysis
+ - Transcription-factor activity inference with decoupleR
+ - TRUST4 immune-repertoire analysis
+ - Fusion and variant-analysis modules
+
+License
+NF-RNAseq is licensed under the [Apache License 2.0](LICENSE). 
+
+Third-party software and downloaded reference resources remain subject to
+their respective licenses and terms of use.
