@@ -8,6 +8,7 @@ This is a base version of the RNAseq pipeline currently doing the following:
 
 <img width="1158" height="327" alt="image" src="https://github.com/user-attachments/assets/ffa572bf-1cd9-4333-b865-364b5fc426dd" />
 
+Currently, it supports both single and paired-end sample processing, however is adapted to process only short-read samples (Illumina NovaSEQ, MGI).
 
 Optional modules:
 
