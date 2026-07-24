@@ -59,21 +59,6 @@ Single-end input should use:
 The .fq.gz extension is also supported. Input directories are searched
 recursively. The current release does not support long-read or single-cell RNA sequencing.
 
-Installation:
-
-Run `Rscript setup/scripts/initialize_renv.R` to initialize the renv
-
-Currently, it supports both single and paired-end sample processing, however is adapted to process only short-read samples (Illumina NovaSEQ, MGI).
-
-Optional modules:
-
-These are modules that are not critical in producing gene expression matrices, but answer biological questions based on them.
-
-- decoupler Badia-i-Mompel P., Vélez Santiago J., Braunger J., Geiss C., Dimitrov D., Müller-Dott S., Taus P., Dugourd A., Holland C.H., Ramirez Flores R.O. and Saez-Rodriguez J. 2022. decoupleR: Ensemble of computational methods to infer biological activities from omics data. Bioinformatics Advances. https://doi.org/10.1093/bioadv/vbac016
-- immune deconvolution Sturm G, Finotello F, List M. Immunedeconv: An R Package for Unified Access to Computational Methods for Estimating Immune Cell Fractions from Bulk RNA-Sequencing Data. Methods Mol Biol. 2020;2120:223-232. doi: 10.1007/978-1-0716-0327-7_16. PMID: 32124323.
-- ssgsea Barbie, D., Tamayo, P., Boehm, J. et al. Systematic RNA interference reveals that oncogenic KRAS-driven cancers require TBK1. Nature 462, 108–112 (2009). https://doi.org/10.1038/nature08460
-- trust4 Song, L., Cohen, D., Ouyang, Z. et al. TRUST4: immune repertoire reconstruction from bulk and single-cell RNA-seq data. Nat Methods 18, 627–630 (2021). https://doi.org/10.1038/s41592-021-01142-2
-
 ## 3. Installation
 
 Requirements
@@ -155,11 +140,12 @@ The following modules are planned for future releases and are not included in
 
 Core Module 1.0:
  - Nextflow workflow execution
- - Immune-cell deconvolution
- - ssGSEA pathway analysis
+ - Immune-cell deconvolution Sturm G, Finotello F, List M. Immunedeconv: An R Package for Unified Access to Computational Methods for Estimating Immune Cell Fractions from Bulk RNA-Sequencing Data. Methods Mol Biol. 2020;2120:223-232. doi: 10.1007/978-1-0716-0327-7_16. PMID: 32124323.
+ - ssGSEA pathway analysis Barbie, D., Tamayo, P., Boehm, J. et al. Systematic RNA interference reveals that oncogenic KRAS-driven cancers require TBK1. Nature 462, 108–112 (2009). https://doi.org/10.1038/nature08460
  - Transcription-factor activity inference with decoupleR
- - TRUST4 immune-repertoire analysis
+ - TRUST4 immune-repertoire analysis Song, L., Cohen, D., Ouyang, Z. et al. TRUST4: immune repertoire reconstruction from bulk and single-cell RNA-seq data. Nat Methods 18, 627–630 (2021). https://doi.org/10.1038/s41592-021-01142-2
  - Fusion and variant-analysis modules
+ - DecoupleR Badia-i-Mompel P., Vélez Santiago J., Braunger J., Geiss C., Dimitrov D., Müller-Dott S., Taus P., Dugourd A., Holland C.H., Ramirez Flores R.O. and Saez-Rodriguez J. 2022. decoupleR: Ensemble of computational methods to infer biological activities from omics data. Bioinformatics Advances.   https://doi.org/10.1093/bioadv/vbac016
 
 License
 NF-RNAseq is licensed under the [Apache License 2.0](LICENSE). 
