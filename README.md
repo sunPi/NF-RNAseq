@@ -32,6 +32,10 @@ FASTQ
   * MultiQC
 ```
 
+Process Flow Chart:
+
+<img width="6663" height="1886" alt="NF-RNAseq - Page 1" src="https://github.com/user-attachments/assets/fb21d928-b901-4865-bf83-e93d360da20d" />
+
 ## 2. Supported Data
 
 The current release supports bulk short-read RNA sequencing from platforms
@@ -56,14 +60,9 @@ recursively. The current release does not support long-read or single-cell RNA s
 
 
 
-
 Installation:
 
 Run `Rscript setup/scripts/initialize_renv.R` to initialize the renv
-
-This is a base version of the RNAseq pipeline currently doing the following:
-
-<img width="1158" height="327" alt="image" src="https://github.com/user-attachments/assets/ffa572bf-1cd9-4333-b865-364b5fc426dd" />
 
 Currently, it supports both single and paired-end sample processing, however is adapted to process only short-read samples (Illumina NovaSEQ, MGI).
 
