@@ -75,3 +75,76 @@ These are modules that are not critical in producing gene expression matrices, b
 - immune deconvolution Sturm G, Finotello F, List M. Immunedeconv: An R Package for Unified Access to Computational Methods for Estimating Immune Cell Fractions from Bulk RNA-Sequencing Data. Methods Mol Biol. 2020;2120:223-232. doi: 10.1007/978-1-0716-0327-7_16. PMID: 32124323.
 - ssgsea Barbie, D., Tamayo, P., Boehm, J. et al. Systematic RNA interference reveals that oncogenic KRAS-driven cancers require TBK1. Nature 462, 108–112 (2009). https://doi.org/10.1038/nature08460
 - trust4 Song, L., Cohen, D., Ouyang, Z. et al. TRUST4: immune repertoire reconstruction from bulk and single-cell RNA-seq data. Nat Methods 18, 627–630 (2021). https://doi.org/10.1038/s41592-021-01142-2
+
+## 3. Installation
+
+Requirements
+
+```
+* Linux
+* Bash
+* Conda, Miniconda, Miniforge, or Mambaforge
+* Internet access during installation
+* Sufficient storage and memory for genome-reference construction
+```
+
+Download
+
+```
+
+git clone https://github.com/sunPi/NF-RNAseq.git
+cd NF-RNAseq
+
+```
+
+Install
+
+```
+
+Install GRCh38:
+./install_pipe.sh --assembly GRCh38 --threads 16
+
+Install GRCh37/hg19:
+./install_pipe.sh --assembly hg19 --threads 16
+
+Install both assemblies:
+./install_pipe.sh --with-hg19 --threads 16
+
+The installer creates the nf-env Conda environment, restores R packages
+from renv.lock, downloads reference resources, constructs the STAR and RSEM
+indices, and generates the local config/main.config.
+
+Activate the environment:
+conda activate nf-env
+```
+
+Run
+
+```
+
+Run paired-end data:
+./main.sh \
+  --assembly GRCh38 \
+  --layout paired \
+  --experiment study_01 \
+  --input /path/to/fastq
+Run single-end data:
+./main.sh \
+  --assembly GRCh38 \
+  --layout single \
+  --experiment study_01 \
+  --input /path/to/fastq
+Results are written below:
+results/<experiment>/
+The main outputs include:
+Per-sample FastQC and fastp reports
+STAR alignments
+RSEM gene and isoform results
+Sample QC classifications
+Expected-count matrix
+TPM matrix
+
+```
+
+FPKM matrix
+MultiQC report
