@@ -34,7 +34,7 @@ FASTQ
 
 Process Flow Chart:
 
-<img width="6663" height="2282" alt="NF-RNAseq - Page 1(1)" src="https://github.com/user-attachments/assets/0058ba25-48e4-40e7-a54a-52726481e59c" />
+<img width="6663" height="2282" alt="NF-RNAseq - Page 1 NF-RNAseq Core Module Workflow(1)" src="https://github.com/user-attachments/assets/2ae62b0f-9409-4b89-be17-ff330d24fa87" />
 
 
 ## 2. Supported Data
