@@ -658,10 +658,14 @@ check_compatibility() {
     local gtf_contig_example
 
     fasta_contig_example="$(
-        grep '^>' "$FASTA" |
-            head -n 1 |
-            sed 's/^>//' |
-            cut -d ' ' -f 1
+        awk '
+            /^>/ {
+                sub(/^>/, "")
+                split($0, fields, /[[:space:]]+/)
+                print fields[1]
+                exit
+            }
+        ' "$FASTA"
     )"
 
     gtf_contig_example="$(
@@ -672,6 +676,12 @@ check_compatibility() {
             }
         ' "$GTF"
     )"
+
+    [[ -n "$fasta_contig_example" ]] ||
+        die "No FASTA contig header found in: $FASTA"
+
+    [[ -n "$gtf_contig_example" ]] ||
+        die "No annotation contig found in: $GTF"
 
     printf '  FASTA example contig: %s\n' "$fasta_contig_example"
     printf '  GTF example contig:   %s\n' "$gtf_contig_example"
