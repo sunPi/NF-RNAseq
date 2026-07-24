@@ -28,6 +28,8 @@
 !/modules/qc/
 /modules/qc/*
 !/modules/qc/qc_validator.py
+!/modules/fusion/
+!/modules/fusion/**
 
 ###############################################################################
 # Nextflow runtime and future-development artifacts

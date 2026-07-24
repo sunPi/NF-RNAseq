@@ -42,6 +42,7 @@ INSTALL_GRCH37=false
 INSTALL_SOFTWARE=true
 INSTALL_VEP=true
 INSTALL_RRNA=true
+ADD_MODULES=""
 
 ###############################################################################
 # Helpers
@@ -83,6 +84,8 @@ General options:
   --skip-software     Skip Conda, Nextflow, and R package installation
   --skip-vep          Skip VEP software and cache installation
   --skip-rrna         Skip SILVA rRNA reference and Bowtie2 index
+  --add-modules VALUE Install optional modules only: MODULE, comma-separated
+                      MODULE list, or all
   -h, --help          Show this help
 
 Examples:
@@ -91,6 +94,9 @@ Examples:
   ./install_pipe.sh --assembly hg19
   ./install_pipe.sh --assembly hg38 --threads 16
   ./install_pipe.sh --skip-software --with-hg19
+  ./install_pipe.sh --add-modules fusion --assembly GRCh38
+  ./install_pipe.sh --add-modules fusion,trust4 --with-hg19
+  ./install_pipe.sh --add-modules all --assembly GRCh38
 EOF
 }
 
@@ -161,6 +167,17 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
 
+        --add-modules)
+            [[ $# -ge 2 ]] || die "--add-modules requires a module list."
+            ADD_MODULES="$2"
+            shift 2
+            ;;
+
+        --add-modules=*)
+            ADD_MODULES="${1#*=}"
+            shift
+            ;;
+
         -h|--help)
             usage
             exit 0
@@ -176,6 +193,68 @@ mkdir -p "$DB_ROOT"
 # Several installation steps run from a different working directory.  Resolve
 # the database root now so paths passed to those tools remain valid after cd.
 DB_ROOT="$(cd "$DB_ROOT" && pwd -P)"
+
+install_optional_modules() {
+    local requested_modules="$1"
+    local assembly
+    local module_name
+    local module_db_root
+    local module_installer
+    local -a module_list
+    local -a assembly_list=()
+
+    if [[ "${requested_modules,,}" == "all" ]]; then
+        mapfile -t module_list < <(
+            find "${SCRIPT_DIR}/modules" \
+                -mindepth 2 \
+                -maxdepth 2 \
+                -type f \
+                -name install.sh \
+                -executable \
+                -printf '%h\n' |
+                sed 's#.*/##' |
+                sort -u
+        )
+    else
+        IFS=',' read -r -a module_list <<< "$requested_modules"
+    fi
+
+    (( ${#module_list[@]} > 0 )) ||
+        die "No installable optional modules were found."
+
+    [[ "$INSTALL_GRCH38" != true ]] || assembly_list+=(GRCh38)
+    [[ "$INSTALL_GRCH37" != true ]] || assembly_list+=(GRCh37)
+
+    for module_name in "${module_list[@]}"; do
+        module_name="${module_name#"${module_name%%[![:space:]]*}"}"
+        module_name="${module_name%"${module_name##*[![:space:]]}"}"
+        module_name="${module_name,,}"
+        [[ "$module_name" =~ ^[a-z0-9][a-z0-9_-]*$ ]] ||
+            die "Invalid optional module name: $module_name"
+
+        module_installer="${SCRIPT_DIR}/modules/${module_name}/install.sh"
+        [[ -x "$module_installer" ]] ||
+            die "Optional module has no executable installer: $module_name ($module_installer)"
+        module_db_root="${DB_ROOT}/shared/${module_name}_module"
+        mkdir -p "$module_db_root"
+
+        for assembly in "${assembly_list[@]}"; do
+            log "Installing optional module '$module_name' for $assembly"
+            "$module_installer" \
+                --assembly "$assembly" \
+                --db-root "$DB_ROOT" \
+                --module-db-root "$module_db_root" \
+                --conda-env "$CONDA_ENV" \
+                --threads "$THREADS"
+        done
+    done
+}
+
+if [[ -n "$ADD_MODULES" ]]; then
+    install_optional_modules "$ADD_MODULES"
+    log "Optional-module installation completed"
+    exit 0
+fi
 
 ###############################################################################
 # Software installation
@@ -230,6 +309,7 @@ install_conda_environment() {
         curl \
         git \
         perl \
+        perl-dbi \
         python=3.11 \
         r-base
 
@@ -279,6 +359,13 @@ verify_conda_installation() {
 
     [[ "$missing" -eq 0 ]] ||
         die "One or more required tools are missing from the active environment."
+
+    if perl -MDBI -e 'exit 0' 2>/dev/null; then
+        printf '%-28s %-10s %s\n' "Perl DBI module" "FOUND" "$CONDA_PREFIX"
+    else
+        printf '%-28s %-10s %s\n' "Perl DBI module" "MISSING" "$CONDA_PREFIX"
+        die "Perl DBI is missing from Conda environment '$CONDA_ENV'."
+    fi
 }
 
 install_r_environment() {
@@ -330,6 +417,12 @@ VEP_SOURCE_DIR="$DB_ROOT/tools/ensembl-vep/release-${VEP_RELEASE}"
 install_vep_software() {
     require_command git
     require_command perl
+
+    perl -MDBI -e 'exit 0' 2>/dev/null ||
+        die "VEP requires Perl DBI. Install perl-dbi in Conda environment '$CONDA_ENV'."
+
+    log "Using Perl for VEP: $(command -v perl)"
+    log "Perl DBI version: $(perl -MDBI -e 'print $DBI::VERSION')"
 
     mkdir -p "$(dirname "$VEP_SOURCE_DIR")"
 
