@@ -34,7 +34,8 @@ FASTQ
 
 Process Flow Chart:
 
-<img width="6663" height="1886" alt="NF-RNAseq - Page 1" src="https://github.com/user-attachments/assets/fb21d928-b901-4865-bf83-e93d360da20d" />
+<img width="8338" height="2282" alt="NF-RNAseq - Page 1 NF-RNAseq Core Module Workflow" src="https://github.com/user-attachments/assets/a8f4b8c7-2595-480c-a530-b337cb61e1de" />
+
 
 ## 2. Supported Data
 
@@ -57,8 +58,6 @@ Single-end input should use:
 
 The .fq.gz extension is also supported. Input directories are searched
 recursively. The current release does not support long-read or single-cell RNA sequencing.
-
-
 
 Installation:
 
