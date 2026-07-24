@@ -151,7 +151,7 @@ The main outputs include:
 
 ```
 
-4. Optional Modules
+## 4. Optional Modules
 
 The following modules are planned for future releases and are not included in
 
