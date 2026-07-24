@@ -1,6 +1,36 @@
 # NF-RNAseq
 
-This is an automated RNA-seq pipeline that produces analysis-ready data in the form of gene expression matrices, where it uses FASTQ files as inputs.
+## 1. Pipeline Overview
+
+NF-RNAseq is a Linux-based bulk RNA-sequencing pipeline for processing
+single-end and paired-end short-read FASTQ files.
+
+The Core Module 1.0 workflow performs:
+
+1. Raw-read quality control with FastQC
+2. Adapter trimming and filtering with fastp
+3. Quality control of trimmed reads
+4. Alignment with STAR
+5. BAM indexing with Samtools
+6. Gene and transcript quantification with RSEM
+7. Sample-level quality assessment
+8. Generation of expected-count, TPM, and FPKM matrices
+9. Aggregated reporting with MultiQC
+
+Workflow overview:
+
+```
+FASTQ
+  * FastQC
+  * fastp
+  * FastQC
+  * STAR
+  * Samtools
+  * RSEM
+  * QC validation
+  * expression matrices
+  * MultiQC
+tomated RNA-seq pipeline that produces analysis-ready data in the form of gene expression matrices, where it uses FASTQ files as inputs.
 
 Installation:
 
