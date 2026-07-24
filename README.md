@@ -30,7 +30,32 @@ FASTQ
   * QC validation
   * expression matrices
   * MultiQC
-tomated RNA-seq pipeline that produces analysis-ready data in the form of gene expression matrices, where it uses FASTQ files as inputs.
+```
+
+## 2. Supported Data
+
+The current release supports bulk short-read RNA sequencing from platforms
+such as Illumina and MGI.
+
+Supported read layouts:
+* Single-end
+* Paired-end
+* Supported human reference assemblies:
+  - GRCh38/hg38
+  - GRCh37/hg19
+
+Paired-end files must follow this naming convention:
+ - SAMPLE_1.fastq.gz
+ - SAMPLE_2.fastq.gz
+
+Single-end input should use:
+ - SAMPLE.fastq.gz
+
+The .fq.gz extension is also supported. Input directories are searched
+recursively. The current release does not support long-read or single-cell RNA sequencing.
+
+
+
 
 Installation:
 
