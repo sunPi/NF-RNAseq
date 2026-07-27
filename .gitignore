@@ -31,6 +31,8 @@
 !/modules/qc/qc_validator.py
 !/modules/fusion/
 !/modules/fusion/**
+!/modules/isoforms/
+!/modules/isoforms/**
 
 ###############################################################################
 # Nextflow runtime and future-development artifacts

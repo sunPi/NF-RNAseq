@@ -166,6 +166,7 @@ resources for the required assembly before selecting it at runtime:
 
 ```
 ./install_pipe.sh --add-modules fusion --assembly GRCh38
+./install_pipe.sh --add-modules isoforms --assembly GRCh38
 ```
 
 The module runs STAR-Fusion and Arriba using the trimmed FASTQ files produced
