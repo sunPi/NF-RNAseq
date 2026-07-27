@@ -3,6 +3,30 @@
 set -Eeuo pipefail
 
 ################################################################################
+# 0. Preprocessing commands
+################################################################################
+
+if [[ "${1:-}" == "prepare-samples" ]]; then
+    shift
+
+    SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+    SAMPLESHEET_GENERATOR="${SCRIPT_DIR}/setup/scripts/create_samplesheet.py"
+
+    [[ -f "$SAMPLESHEET_GENERATOR" ]] || {
+        printf '[ERROR] Sample-sheet generator not found: %s\n' \
+            "$SAMPLESHEET_GENERATOR" >&2
+        exit 1
+    }
+
+    command -v python3 >/dev/null 2>&1 || {
+        printf '[ERROR] python3 is required to prepare a sample sheet.\n' >&2
+        exit 1
+    }
+
+    exec python3 "$SAMPLESHEET_GENERATOR" "$@"
+fi
+
+################################################################################
 # 1. Command helpers and usage
 ################################################################################
 
@@ -25,6 +49,9 @@ Usage:
   $(basename "$0") --assembly <ASSEMBLY> --layout <single|paired> \\
     --experiment <PATH> --input <DIRECTORY>
 
+  $(basename "$0") prepare-samples --input <DIRECTORY> \\
+    --layout <single|paired> --output <SAMPLESHEET.csv>
+
 Options:
   -a, --assembly NAME    Reference assembly: GRCh37, hg19, GRCh38, or hg38
   -l, --layout TYPE      Sequencing layout: single or paired
@@ -34,6 +61,9 @@ Options:
   -h, --help            Show this help message.
 
 Examples:
+  $(basename "$0") prepare-samples --input /data/pilot_fastq \\
+    --layout single --output pilot.samplesheet.csv
+
   $(basename "$0") --assembly GRCh37 --layout paired \\
     --experiment KOKI_TEST/SUBTEST --input test_data/UVM/KOKI
   $(basename "$0") --assembly GRCh38 --layout single \\
