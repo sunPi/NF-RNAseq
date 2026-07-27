@@ -66,6 +66,43 @@ OUTPUT_DIR/arriba/SAMPLE.arriba.fusion_genes.tsv
 The sample-specific tables prepend a `Sample` column and are suitable for
 later experiment-level aggregation.
 
+## Experiment-level matrices
+
+After every selected sample completes, `main.sh` automatically aggregates the
+STAR-Fusion and Arriba outputs under:
+
+```text
+results/EXPERIMENT/matrices/fusion/
+```
+
+The matrices include STAR-Fusion junction reads, spanning fragments, total
+support, FFPM and presence; Arriba split reads, discordant mates, total support
+and presence; and the number of callers supporting each gene pair per sample.
+The accompanying `fusion_event_catalog.tsv` retains caller, breakpoint,
+confidence, reading-frame and annotation fields.
+
+An already completed module run can be aggregated without rerunning callers:
+
+```bash
+python3 modules/fusion/aggregate_module.py \
+  --results-dir results/KOKI_TEST \
+  --output-dir results/KOKI_TEST/matrices/fusion \
+  --samples-file results/KOKI_TEST/QC/qc_included_samples.txt
+```
+
+Reviewed decisions can be applied without altering the complete raw matrices:
+
+```bash
+python3 modules/fusion/curate_cohort.py \
+  --input-dir results/KOKI_TEST/matrices/fusion \
+  --decisions results/KOKI_TEST/matrices/fusion/curation_decisions.tsv \
+  --output-dir results/KOKI_TEST/matrices/fusion/curated
+```
+
+The decisions table must contain `fusion_gene_pair` and `decision` columns.
+Rows whose decision is `retain` are written to the curated breakpoint-level
+matrices, gene-pair caller-support matrix, catalog and copied decisions record.
+
 The optional-module installation entry point is:
 
 ```bash

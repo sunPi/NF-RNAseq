@@ -427,9 +427,11 @@ load_current_core_samples() {
 run_selected_modules() {
     local module_name
     local module_runner
+    local module_aggregator
     local index
     local sample
     local -a module_arguments
+    local -a aggregate_arguments
 
     for module_name in "${SELECTED_MODULES[@]}"; do
         module_runner="${SCRIPT_DIR}/modules/${module_name}/run_module.sh"
@@ -451,6 +453,20 @@ run_selected_modules() {
             log_info "Running optional module '$module_name' for $sample"
             "$module_runner" "${module_arguments[@]}"
         done
+
+        module_aggregator="${SCRIPT_DIR}/modules/${module_name}/aggregate_module.py"
+        if [[ -f "$module_aggregator" ]]; then
+            aggregate_arguments=(
+                --results-dir "$RESULTS_DIR"
+                --output-dir "${MATRIX_DIR}/${module_name}"
+            )
+            for sample in "${SAMPLES[@]}"; do
+                aggregate_arguments+=(--sample "$sample")
+            done
+
+            log_info "Aggregating optional module '$module_name' across the experiment"
+            python3 "$module_aggregator" "${aggregate_arguments[@]}"
+        fi
     done
 }
 
