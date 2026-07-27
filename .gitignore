@@ -6,6 +6,7 @@
 
 /db/*
 /GRCh38/
+/config/main.config
 
 ###############################################################################
 # Development data, analysis outputs, and archived code

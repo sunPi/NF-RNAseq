@@ -47,7 +47,12 @@ usage() {
     cat <<EOF
 Usage:
   $(basename "$0") --assembly <ASSEMBLY> --layout <single|paired> \\
-    --experiment <PATH> --input <DIRECTORY>
+    --experiment <PATH> --input <DIRECTORY> [--pipeline core|optional] \\
+    [--modules all|MODULE[,MODULE...]]
+
+  $(basename "$0") --assembly <ASSEMBLY> --layout <single|paired> \\
+    --experiment <PATH> --pipeline modules \\
+    [--modules all|MODULE[,MODULE...]]
 
   $(basename "$0") prepare-samples --input <DIRECTORY> \\
     --layout <single|paired> --output <SAMPLESHEET.csv>
@@ -57,6 +62,8 @@ Options:
   -l, --layout TYPE      Sequencing layout: single or paired
   -e, --experiment PATH  Experiment path used under results/PATH
   -i, --input DIRECTORY  Directory containing FASTQ files; searched recursively
+  -p, --pipeline MODE    core, optional, or modules; default: core
+  -m, --modules VALUE    all or a comma-separated optional-module list
 
   -h, --help            Show this help message.
 
@@ -68,9 +75,15 @@ Examples:
     --experiment KOKI_TEST/SUBTEST --input test_data/UVM/KOKI
   $(basename "$0") --assembly GRCh38 --layout single \\
     --experiment pilot_run --input /data/pilot_fastq
+  $(basename "$0") --assembly GRCh38 --layout single \\
+    --experiment pilot_run --input /data/pilot_fastq \\
+    --pipeline optional --modules all
+  $(basename "$0") --assembly GRCh38 --layout single \\
+    --experiment pilot_run --pipeline modules --modules fusion
 
 Paired-end names must be NAME_1.fastq.gz and NAME_2.fastq.gz (or .fq.gz).
 Results for each pair are written below results/PATH/NAME/.
+The modules mode requires a previously completed core run for the experiment.
 EOF
 }
 
@@ -82,6 +95,8 @@ ASSEMBLY_REQUESTED=""
 READ_LAYOUT=""
 EXPERIMENT_NAME=""
 INPUT_DIR_REQUESTED=""
+PIPELINE_MODE="core"
+MODULES_REQUESTED=""
 
 while (( $# > 0 )); do
     case "$1" in
@@ -138,6 +153,33 @@ while (( $# > 0 )); do
             shift
             ;;
 
+        -p|--pipeline)
+            [[ $# -ge 2 ]] ||
+                die "Missing value after $1"
+
+            PIPELINE_MODE="${2,,}"
+            shift 2
+            ;;
+
+        --pipeline=*)
+            PIPELINE_MODE="${1#*=}"
+            PIPELINE_MODE="${PIPELINE_MODE,,}"
+            shift
+            ;;
+
+        -m|--modules)
+            [[ $# -ge 2 ]] ||
+                die "Missing value after $1"
+
+            MODULES_REQUESTED="$2"
+            shift 2
+            ;;
+
+        --modules=*)
+            MODULES_REQUESTED="${1#*=}"
+            shift
+            ;;
+
         -h|--help)
             usage
             exit 0
@@ -158,8 +200,30 @@ done
 [[ -n "$EXPERIMENT_NAME" ]] ||
     die "No experiment name specified. Use --experiment NAME"
 
-[[ -n "$INPUT_DIR_REQUESTED" ]] ||
-    die "No FASTQ input directory specified. Use --input DIRECTORY"
+case "$PIPELINE_MODE" in
+    core)
+        [[ -z "$MODULES_REQUESTED" ]] ||
+            die "--modules cannot be used with --pipeline core"
+        ;;
+    optional|full)
+        PIPELINE_MODE="optional"
+        [[ -n "$MODULES_REQUESTED" ]] || MODULES_REQUESTED="all"
+        ;;
+    modules)
+        [[ -n "$MODULES_REQUESTED" ]] || MODULES_REQUESTED="all"
+        ;;
+    *)
+        die "Invalid pipeline mode '$PIPELINE_MODE'. Use core, optional, or modules"
+        ;;
+esac
+
+if [[ "$PIPELINE_MODE" == "modules" ]]; then
+    [[ -z "$INPUT_DIR_REQUESTED" ]] ||
+        die "--input is not used with --pipeline modules; modules use prior core outputs"
+else
+    [[ -n "$INPUT_DIR_REQUESTED" ]] ||
+        die "No FASTQ input directory specified. Use --input DIRECTORY"
+fi
 
 [[ "$EXPERIMENT_NAME" != /* && "$EXPERIMENT_NAME" != *//* ]] ||
     die "Invalid experiment path '$EXPERIMENT_NAME'. Use a relative path below results/"
@@ -207,6 +271,7 @@ select_reference_assembly "$ASSEMBLY_REQUESTED" ||
 # Ensure the generated configuration contains the variables required by the
 # base pipeline. The ${name+x} form is safe with `set -u`.
 REQUIRED_CONFIG_VARIABLES=(
+    DB_ROOT
     CONDA_ENV
     THREADS
     SPECIES
@@ -230,10 +295,13 @@ done
 # 4. Define project input and output paths
 ################################################################################
 
-if [[ "$INPUT_DIR_REQUESTED" == /* ]]; then
-    READS_DIR="$INPUT_DIR_REQUESTED"
-else
-    READS_DIR="${ROOT_DIR}/${INPUT_DIR_REQUESTED}"
+READS_DIR=""
+if [[ "$PIPELINE_MODE" != "modules" ]]; then
+    if [[ "$INPUT_DIR_REQUESTED" == /* ]]; then
+        READS_DIR="$INPUT_DIR_REQUESTED"
+    else
+        READS_DIR="${ROOT_DIR}/${INPUT_DIR_REQUESTED}"
+    fi
 fi
 
 RESULTS_ROOT="${ROOT_DIR}/results"
@@ -244,14 +312,158 @@ QC_DIR="${RESULTS_DIR}/QC"
 MULTIQC_DIR="${QC_DIR}/multiqc"
 LOG_DIR="${QC_DIR}/logs"
 
+SELECTED_MODULES=()
+
+resolve_selected_modules() {
+    local requested_modules="$1"
+    local module_name
+    local module_runner
+    local module_config
+    local -a requested_list=()
+    local -A seen_modules=()
+
+    if [[ "${requested_modules,,}" == "all" ]]; then
+        mapfile -t requested_list < <(
+            find "${SCRIPT_DIR}/modules" \
+                -mindepth 2 \
+                -maxdepth 2 \
+                -type f \
+                -name run_module.sh \
+                -executable \
+                -printf '%h\n' |
+                sed 's#.*/##' |
+                sort -u
+        )
+    else
+        IFS=',' read -r -a requested_list <<< "$requested_modules"
+    fi
+
+    (( ${#requested_list[@]} > 0 )) ||
+        die "No runnable optional modules were found"
+
+    for module_name in "${requested_list[@]}"; do
+        module_name="${module_name#"${module_name%%[![:space:]]*}"}"
+        module_name="${module_name%"${module_name##*[![:space:]]}"}"
+        module_name="${module_name,,}"
+
+        [[ "$module_name" =~ ^[a-z0-9][a-z0-9_-]*$ ]] ||
+            die "Invalid optional module name: $module_name"
+        [[ -z "${seen_modules[$module_name]+x}" ]] ||
+            die "Optional module was requested more than once: $module_name"
+
+        module_runner="${SCRIPT_DIR}/modules/${module_name}/run_module.sh"
+        [[ -x "$module_runner" ]] ||
+            die "Optional module has no executable runtime: $module_name"
+
+        module_config="${DB_ROOT}/shared/${module_name}_module/config/${ASSEMBLY}.config"
+        [[ -s "$module_config" ]] ||
+            die "Optional module '$module_name' is not installed for $ASSEMBLY: $module_config"
+
+        seen_modules["$module_name"]=1
+        SELECTED_MODULES+=("$module_name")
+    done
+
+    log_info "Selected optional modules: ${SELECTED_MODULES[*]}"
+}
+
+load_completed_core_samples() {
+    local included_samples_file="${QC_DIR}/qc_included_samples.txt"
+    local sample
+    local trimmed_r1
+    local trimmed_r2
+
+    [[ -s "$included_samples_file" ]] ||
+        die "Modules-only mode requires a completed core QC run: $included_samples_file"
+
+    mapfile -t SAMPLES < "$included_samples_file"
+    (( ${#SAMPLES[@]} > 0 )) ||
+        die "The completed core run contains no QC-included samples"
+
+    R1_PATHS=()
+    R2_PATHS=()
+
+    for sample in "${SAMPLES[@]}"; do
+        [[ "$sample" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] ||
+            die "Invalid sample identifier in $included_samples_file: $sample"
+
+        if [[ "$READ_LAYOUT" == "paired" ]]; then
+            trimmed_r1="${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed_R1.fastq.gz"
+            trimmed_r2="${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed_R2.fastq.gz"
+            [[ -s "$trimmed_r2" ]] ||
+                die "Prior core R2 output is missing for $sample: $trimmed_r2"
+        else
+            trimmed_r1="${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed.fastq.gz"
+            trimmed_r2=""
+        fi
+
+        [[ -s "$trimmed_r1" ]] ||
+            die "Prior core R1 output is missing for $sample: $trimmed_r1"
+
+        R1_PATHS+=("$trimmed_r1")
+        R2_PATHS+=("$trimmed_r2")
+    done
+}
+
+load_current_core_samples() {
+    local sample
+
+    R1_PATHS=()
+    R2_PATHS=()
+
+    for sample in "${SAMPLES[@]}"; do
+        if [[ "$READ_LAYOUT" == "paired" ]]; then
+            R1_PATHS+=("${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed_R1.fastq.gz")
+            R2_PATHS+=("${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed_R2.fastq.gz")
+        else
+            R1_PATHS+=("${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed.fastq.gz")
+            R2_PATHS+=("")
+        fi
+    done
+}
+
+run_selected_modules() {
+    local module_name
+    local module_runner
+    local index
+    local sample
+    local -a module_arguments
+
+    for module_name in "${SELECTED_MODULES[@]}"; do
+        module_runner="${SCRIPT_DIR}/modules/${module_name}/run_module.sh"
+        for index in "${!SAMPLES[@]}"; do
+            sample="${SAMPLES[$index]}"
+            module_arguments=(
+                --sample "$sample"
+                --layout "$READ_LAYOUT"
+                --read1 "${R1_PATHS[$index]}"
+                --output-dir "${RESULTS_DIR}/${sample}/modules/${module_name}"
+                --assembly "$ASSEMBLY"
+                --db-root "$DB_ROOT"
+                --threads "$THREADS"
+            )
+            if [[ "$READ_LAYOUT" == "paired" ]]; then
+                module_arguments+=(--read2 "${R2_PATHS[$index]}")
+            fi
+
+            log_info "Running optional module '$module_name' for $sample"
+            "$module_runner" "${module_arguments[@]}"
+        done
+    done
+}
+
 ################################################################################
 # 5. Validate runtime, references, and input
 ################################################################################
 
-[[ -d "$READS_DIR" ]] ||
-    die "FASTQ input directory not found: $READS_DIR"
+if [[ "$PIPELINE_MODE" == "modules" ]]; then
+    [[ -d "$RESULTS_DIR" ]] ||
+        die "Modules-only mode requires prior core results: $RESULTS_DIR"
+else
+    [[ -d "$READS_DIR" ]] ||
+        die "FASTQ input directory not found: $READS_DIR"
 
-READS_DIR="$(cd -- "$READS_DIR" && pwd -P)"
+    READS_DIR="$(cd -- "$READS_DIR" && pwd -P)"
+fi
 
 MAX_THREADS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo "unknown")"
 
@@ -266,22 +478,24 @@ if [[ "${CONDA_DEFAULT_ENV:-}" != "$CONDA_ENV" ]]; then
     die "Conda environment '$CONDA_ENV' is not active. Run: conda activate $CONDA_ENV"
 fi
 
-log_info "Validating software dependencies"
+if [[ "$PIPELINE_MODE" != "modules" ]]; then
+    log_info "Validating core software dependencies"
 
-REQUIRED_COMMANDS=(
-    python3
-    fastqc
-    fastp
-    STAR
-    rsem-calculate-expression
-    samtools
-    multiqc
-)
+    REQUIRED_COMMANDS=(
+        python3
+        fastqc
+        fastp
+        STAR
+        rsem-calculate-expression
+        samtools
+        multiqc
+    )
 
-for command_name in "${REQUIRED_COMMANDS[@]}"; do
-    command -v "$command_name" >/dev/null 2>&1 ||
-        die "Required command not found in PATH: $command_name"
-done
+    for command_name in "${REQUIRED_COMMANDS[@]}"; do
+        command -v "$command_name" >/dev/null 2>&1 ||
+            die "Required command not found in PATH: $command_name"
+    done
+fi
 
 log_info "Validating reference installation for $ASSEMBLY"
 
@@ -318,6 +532,24 @@ for reference_file in "${RSEM_REFERENCE_FILES[@]}"; do
     [[ -s "$reference_file" ]] ||
         die "Required RSEM reference file is missing or empty: $reference_file"
 done
+
+if [[ "$PIPELINE_MODE" == "optional" || "$PIPELINE_MODE" == "modules" ]]; then
+    resolve_selected_modules "$MODULES_REQUESTED"
+fi
+
+if [[ "$PIPELINE_MODE" == "modules" ]]; then
+    load_completed_core_samples
+    run_selected_modules
+
+    log_info "Optional modules completed successfully"
+    log_info "Experiment:    $EXPERIMENT_NAME"
+    log_info "Assembly:      $ASSEMBLY"
+    log_info "Read layout:   $READ_LAYOUT"
+    log_info "Modules:       ${SELECTED_MODULES[*]}"
+    log_info "Samples:       ${#SAMPLES[@]}"
+    log_info "Results root:  $RESULTS_DIR"
+    exit 0
+fi
 
 mkdir -p \
     "$MATRIX_DIR" \
@@ -853,10 +1085,20 @@ MULTIQC_REPORT="${MULTIQC_DIR}/multiqc_report.html"
     die "MultiQC report was not generated successfully: $MULTIQC_REPORT"
 
 ################################################################################
-# 12. Completion
+# 12. Optional modules
+################################################################################
+
+if [[ "$PIPELINE_MODE" == "optional" ]]; then
+    load_current_core_samples
+    run_selected_modules
+fi
+
+################################################################################
+# 13. Completion
 ################################################################################
 
 log_info "Pipeline completed successfully"
+log_info "Pipeline mode: $PIPELINE_MODE"
 log_info "Experiment:    $EXPERIMENT_NAME"
 log_info "Species:       $SPECIES"
 log_info "Assembly:      $ASSEMBLY"
@@ -870,3 +1112,6 @@ log_info "Counts matrix: $COUNTS_MATRIX"
 log_info "TPM matrix:    $TPM_MATRIX"
 log_info "FPKM matrix:   $FPKM_MATRIX"
 log_info "MultiQC:       $MULTIQC_REPORT"
+if [[ "$PIPELINE_MODE" == "optional" ]]; then
+    log_info "Modules:       ${SELECTED_MODULES[*]}"
+fi
