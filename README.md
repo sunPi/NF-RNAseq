@@ -110,14 +110,33 @@ Run paired-end data:
    --assembly GRCh38 \
    --layout paired \
    --experiment study_01 \
-   --input /path/to/fastq
+   --input /path/to/fastq \
+   --pipeline core
 
 Run single-end data:
  ./main.sh \
    --assembly GRCh38 \
    --layout single \
    --experiment study_01 \
-   --input /path/to/fastq
+   --input /path/to/fastq \
+   --pipeline core
+
+Run the core pipeline followed by all installed optional modules:
+ ./main.sh \
+   --assembly GRCh38 \
+   --layout single \
+   --experiment study_01 \
+   --input /path/to/fastq \
+   --pipeline optional \
+   --modules all
+
+Run one or more modules against a previously completed core experiment:
+ ./main.sh \
+   --assembly GRCh38 \
+   --layout single \
+   --experiment study_01 \
+   --pipeline modules \
+   --modules fusion
 
 Results are written below:
  results/<experiment>/
@@ -136,6 +155,23 @@ The main outputs include:
 
 ## 4. Optional Modules
 
+The fusion module is currently available. Install its software and reference
+resources for the required assembly before selecting it at runtime:
+
+```
+./install_pipe.sh --add-modules fusion --assembly GRCh38
+```
+
+The module runs STAR-Fusion and Arriba using the trimmed FASTQ files produced
+by the core pipeline. Module outputs are written below:
+
+```
+results/<experiment>/<sample>/modules/fusion/
+```
+
+Use `--modules all` to run every installed optional module, or provide a
+comma-separated selection as more modules become available.
+
 The following modules are planned for future releases and are not included in
 
 Core Module 1.0:
@@ -144,7 +180,7 @@ Core Module 1.0:
  - ssGSEA pathway analysis Barbie, D., Tamayo, P., Boehm, J. et al. Systematic RNA interference reveals that oncogenic KRAS-driven cancers require TBK1. Nature 462, 108–112 (2009). https://doi.org/10.1038/nature08460
  - Transcription-factor activity inference with decoupleR
  - TRUST4 immune-repertoire analysis Song, L., Cohen, D., Ouyang, Z. et al. TRUST4: immune repertoire reconstruction from bulk and single-cell RNA-seq data. Nat Methods 18, 627–630 (2021). https://doi.org/10.1038/s41592-021-01142-2
- - Fusion and variant-analysis modules
+ - Additional variant-analysis modules
  - DecoupleR Badia-i-Mompel P., Vélez Santiago J., Braunger J., Geiss C., Dimitrov D., Müller-Dott S., Taus P., Dugourd A., Holland C.H., Ramirez Flores R.O. and Saez-Rodriguez J. 2022. decoupleR: Ensemble of computational methods to infer biological activities from omics data. Bioinformatics Advances.   https://doi.org/10.1093/bioadv/vbac016
 
 License
