@@ -145,9 +145,21 @@ conda install \
     --channel conda-forge \
     --channel bioconda \
     --yes \
-    arriba
+    arriba \
+    perl-carp-assert \
+    perl-db_file \
+    perl-json-xs \
+    perl-perlio-gzip \
+    perl-set-intervaltree \
+    perl-uri
 
 conda run --name "$CONDA_ENV" arriba -h >/dev/null 2>&1
+conda run --name "$CONDA_ENV" perl -MDB_File -e 'exit 0' ||
+    die "Perl DB_File could not be loaded in Conda environment '$CONDA_ENV'"
+conda run --name "$CONDA_ENV" perl -MSet::IntervalTree -e 'exit 0' ||
+    die "Perl Set::IntervalTree could not be loaded in Conda environment '$CONDA_ENV'"
+conda run --name "$CONDA_ENV" perl -MJSON::XS -e 'exit 0' ||
+    die "Perl JSON::XS could not be loaded in Conda environment '$CONDA_ENV'"
 
 case "$(uname -m)" in
     x86_64|amd64)
@@ -168,6 +180,7 @@ case "$(uname -m)" in
 
         STAR_FUSION_SOURCE="${MODULE_DB_ROOT}/tools/STAR-Fusion-v${STAR_FUSION_VERSION}"
         STAR_FUSION_EXECUTABLE="${STAR_FUSION_SOURCE}/STAR-Fusion"
+        STAR_FUSION_PLUGINS="${STAR_FUSION_SOURCE}/plugins"
         STAR_FUSION_ARCHIVE_NAME="STAR-Fusion-v${STAR_FUSION_VERSION}.FULL.tar.gz"
         STAR_FUSION_ARCHIVE="${DOWNLOAD_DIR}/${STAR_FUSION_ARCHIVE_NAME}"
         STAR_FUSION_URL="https://github.com/STAR-Fusion/STAR-Fusion/releases/download/STAR-Fusion-v${STAR_FUSION_VERSION}/${STAR_FUSION_ARCHIVE_NAME}"
@@ -182,10 +195,16 @@ case "$(uname -m)" in
             tar -xzf "$STAR_FUSION_ARCHIVE" -C "${MODULE_DB_ROOT}/tools"
             [[ -d "$STAR_FUSION_SOURCE" ]] ||
                 die "STAR-Fusion archive did not create: $STAR_FUSION_SOURCE"
-            make -C "$STAR_FUSION_SOURCE"
         else
             log_info "STAR-Fusion full-release installation already exists"
         fi
+
+        log_info "Removing bundled Perl extensions in favor of Conda-compatible builds"
+        make -C "$STAR_FUSION_PLUGINS" clean
+        conda run --name "$CONDA_ENV" \
+            env "PERL5LIB=${STAR_FUSION_SOURCE}/PerlLib" \
+            perl -MSet::IntervalTree -e 'exit 0' ||
+            die "STAR-Fusion Set::IntervalTree is incompatible with Perl in '$CONDA_ENV'"
         ;;
     *)
         die "Unsupported CPU architecture for STAR-Fusion: $(uname -m)"

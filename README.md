@@ -150,8 +150,14 @@ The main outputs include:
  - TPM matrix
  - FPKM matrix
  - MultiQC report
+ - Experiment run history in `project_info.tsv`
 
 ```
+
+Every invocation is appended to `results/<experiment>/project_info.tsv`.
+The ledger records the analysis mode and modules, assembly, read layout,
+input path, samples, timing, success or failure status, code revision,
+executed command, and results path.
 
 ## 4. Optional Modules
 

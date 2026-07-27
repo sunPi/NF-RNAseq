@@ -30,6 +30,8 @@ fi
 # 1. Command helpers and usage
 ################################################################################
 
+ORIGINAL_ARGUMENTS=("$@")
+
 log_info() {
     printf '[INFO] %s\n' "$*"
 }
@@ -306,6 +308,7 @@ fi
 
 RESULTS_ROOT="${ROOT_DIR}/results"
 RESULTS_DIR="${RESULTS_ROOT}/${EXPERIMENT_NAME}"
+PROJECT_INFO_FILE="${RESULTS_DIR}/project_info.tsv"
 
 MATRIX_DIR="${RESULTS_DIR}/matrices"
 QC_DIR="${RESULTS_DIR}/QC"
@@ -465,6 +468,110 @@ else
     READS_DIR="$(cd -- "$READS_DIR" && pwd -P)"
 fi
 
+mkdir -p "$RESULTS_DIR"
+
+RUN_ID="$(date -u '+%Y%m%dT%H%M%SZ')-$$"
+RUN_START_UTC="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+RUN_START_EPOCH="$(date +%s)"
+RUN_RECORDED=0
+RUN_COMMAND=""
+RUN_GIT_COMMIT="unknown"
+RUN_GIT_DIRTY="unknown"
+
+printf -v RUN_COMMAND '%q ' "$0" "${ORIGINAL_ARGUMENTS[@]}"
+RUN_COMMAND="${RUN_COMMAND% }"
+
+if command -v git >/dev/null 2>&1 &&
+   git -C "$SCRIPT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    RUN_GIT_COMMIT="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || printf unknown)"
+    if [[ -n "$(git -C "$SCRIPT_DIR" status --porcelain 2>/dev/null)" ]]; then
+        RUN_GIT_DIRTY="yes"
+    else
+        RUN_GIT_DIRTY="no"
+    fi
+fi
+
+tsv_safe() {
+    local value="${1:-}"
+    value="${value//$'\t'/ }"
+    value="${value//$'\r'/ }"
+    value="${value//$'\n'/ }"
+    printf '%s' "$value"
+}
+
+record_project_run() {
+    local exit_status="$1"
+    local run_status="success"
+    local run_end_utc
+    local run_end_epoch
+    local duration_seconds
+    local modules_value="-"
+    local input_value="-"
+    local sample_count=0
+    local sample_names="-"
+
+    (( RUN_RECORDED == 0 )) || return 0
+    RUN_RECORDED=1
+
+    (( exit_status == 0 )) || run_status="failed"
+    run_end_utc="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    run_end_epoch="$(date +%s)"
+    duration_seconds=$((run_end_epoch - RUN_START_EPOCH))
+
+    if (( ${#SELECTED_MODULES[@]} > 0 )); then
+        modules_value="$(IFS=,; printf '%s' "${SELECTED_MODULES[*]}")"
+    elif [[ -n "$MODULES_REQUESTED" ]]; then
+        modules_value="$MODULES_REQUESTED"
+    fi
+
+    [[ -z "$READS_DIR" ]] || input_value="$READS_DIR"
+
+    if declare -p SAMPLES >/dev/null 2>&1; then
+        sample_count="${#SAMPLES[@]}"
+        if (( sample_count > 0 )); then
+            sample_names="$(IFS=,; printf '%s' "${SAMPLES[*]}")"
+        fi
+    fi
+
+    if [[ ! -s "$PROJECT_INFO_FILE" ]]; then
+        printf '%s\n' \
+            $'run_id\tstart_utc\tend_utc\tduration_seconds\tstatus\texit_code\texperiment\tdata_type\tlayout\tassembly\tpipeline\tmodules\tinput_path\tsample_count\tsamples\tthreads\thost\tuser\tgit_commit\tgit_dirty\tcommand\tresults_path' \
+            > "$PROJECT_INFO_FILE"
+    fi
+
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$(tsv_safe "$RUN_ID")" \
+        "$(tsv_safe "$RUN_START_UTC")" \
+        "$(tsv_safe "$run_end_utc")" \
+        "$duration_seconds" \
+        "$run_status" \
+        "$exit_status" \
+        "$(tsv_safe "$EXPERIMENT_NAME")" \
+        "RNA-seq" \
+        "$(tsv_safe "$READ_LAYOUT")" \
+        "$(tsv_safe "$ASSEMBLY")" \
+        "$(tsv_safe "$PIPELINE_MODE")" \
+        "$(tsv_safe "$modules_value")" \
+        "$(tsv_safe "$input_value")" \
+        "$sample_count" \
+        "$(tsv_safe "$sample_names")" \
+        "$(tsv_safe "$THREADS")" \
+        "$(tsv_safe "$(hostname 2>/dev/null || printf unknown)")" \
+        "$(tsv_safe "${USER:-unknown}")" \
+        "$(tsv_safe "$RUN_GIT_COMMIT")" \
+        "$(tsv_safe "$RUN_GIT_DIRTY")" \
+        "$(tsv_safe "$RUN_COMMAND")" \
+        "$(tsv_safe "$RESULTS_DIR")" \
+        >> "$PROJECT_INFO_FILE"
+}
+
+record_project_run_on_exit() {
+    local exit_status=$?
+    record_project_run "$exit_status"
+}
+
+trap record_project_run_on_exit EXIT
+
 MAX_THREADS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo "unknown")"
 
 [[ "$THREADS" =~ ^[1-9][0-9]*$ ]] ||
@@ -548,6 +655,7 @@ if [[ "$PIPELINE_MODE" == "modules" ]]; then
     log_info "Modules:       ${SELECTED_MODULES[*]}"
     log_info "Samples:       ${#SAMPLES[@]}"
     log_info "Results root:  $RESULTS_DIR"
+    log_info "Project info:  $PROJECT_INFO_FILE"
     exit 0
 fi
 
@@ -1112,6 +1220,7 @@ log_info "Counts matrix: $COUNTS_MATRIX"
 log_info "TPM matrix:    $TPM_MATRIX"
 log_info "FPKM matrix:   $FPKM_MATRIX"
 log_info "MultiQC:       $MULTIQC_REPORT"
+log_info "Project info:  $PROJECT_INFO_FILE"
 if [[ "$PIPELINE_MODE" == "optional" ]]; then
     log_info "Modules:       ${SELECTED_MODULES[*]}"
 fi

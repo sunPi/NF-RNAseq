@@ -187,6 +187,16 @@ run_star_fusion() {
     else
         require_command "$STAR_FUSION_EXECUTABLE"
     fi
+    require_command perl
+    perl -MDB_File -e 'exit 0' 2>/dev/null ||
+        die "STAR-Fusion requires Perl DB_File. Repair it with: ./install_pipe.sh --add-modules fusion --assembly GRCh38 (or GRCh37)"
+    if [[ "$STAR_FUSION_EXECUTABLE" == */* ]]; then
+        local star_fusion_root
+        star_fusion_root="$(cd -- "$(dirname -- "$STAR_FUSION_EXECUTABLE")" && pwd -P)"
+        PERL5LIB="${star_fusion_root}/PerlLib${PERL5LIB:+:${PERL5LIB}}" \
+            perl -MSet::IntervalTree -e 'exit 0' 2>/dev/null ||
+            die "STAR-Fusion's Set::IntervalTree extension does not match the active Perl. Repair the fusion installation before retrying."
+    fi
     mkdir -p "$caller_dir"
 
     if [[ "$READ_LAYOUT" == "paired" ]]; then

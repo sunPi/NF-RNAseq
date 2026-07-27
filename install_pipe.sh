@@ -309,6 +309,7 @@ install_conda_environment() {
         curl \
         git \
         perl \
+        perl-db_file \
         perl-dbi \
         python=3.11 \
         r-base
@@ -365,6 +366,13 @@ verify_conda_installation() {
     else
         printf '%-28s %-10s %s\n' "Perl DBI module" "MISSING" "$CONDA_PREFIX"
         die "Perl DBI is missing from Conda environment '$CONDA_ENV'."
+    fi
+
+    if perl -MDB_File -e 'exit 0' 2>/dev/null; then
+        printf '%-28s %-10s %s\n' "Perl DB_File module" "FOUND" "$CONDA_PREFIX"
+    else
+        printf '%-28s %-10s %s\n' "Perl DB_File module" "MISSING" "$CONDA_PREFIX"
+        die "Perl DB_File is missing from Conda environment '$CONDA_ENV'."
     fi
 }
 
