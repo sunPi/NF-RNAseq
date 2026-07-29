@@ -1,0 +1,10 @@
+#!/usr/bin/env Rscript
+all_args <- commandArgs(trailingOnly = FALSE)
+script <- sub("^--file=", "", all_args[grep("^--file=", all_args)])
+root <- dirname(normalizePath(script))
+source(file.path(root, "R", "io.R"))
+source(file.path(root, "R", "analysis.R"))
+source(file.path(root, "R", "plots.R"))
+source(file.path(root, "R", "output.R"))
+source(file.path(root, "R", "cli.R"))
+dge_cli()

@@ -201,12 +201,16 @@ The core expression utilities include `lib/handle_gene_dups.R`, which resolves
 duplicate gene symbols using the highest-expression locus by default after annotation.
 Canonical Ensembl-ID count matrices are retained unchanged.
 
-The fusion module is currently available. Install its software and reference
-resources for the required assembly before selecting it at runtime:
+The fusion, isoform-aggregation, DGE, ranked GSEA, and sample-level ssGSVA
+modules are currently available.
+Install the required module before selecting it at runtime:
 
 ```
 ./install_pipe.sh --add-modules fusion --assembly GRCh38
 ./install_pipe.sh --add-modules isoforms --assembly GRCh38
+./install_pipe.sh --add-modules dge --assembly GRCh38
+./install_pipe.sh --add-modules gsea --assembly GRCh38
+./install_pipe.sh --add-modules ssgsva --assembly GRCh38
 ```
 
 The module runs STAR-Fusion and Arriba using the trimmed FASTQ files produced
@@ -215,6 +219,19 @@ by the core pipeline. Module outputs are written below:
 ```
 results/<experiment>/<sample>/modules/fusion/
 ```
+
+DGE runs DESeq2 on the canonical annotated integer count matrix. It requires a
+design and at least one contrast and writes normalized counts, full and
+significant contrast tables, and QC plots below
+`results/<experiment>/matrices/DGE/`. A `batch` or `covariate_batch` design
+column is included as a model covariate.
+
+Ranked GSEA consumes the complete DGE statistics for every contrast and writes
+fgsea results under `results/<experiment>/matrices/GSEA/`.
+
+ssGSVA calculates per-sample ssGSEA and GSVA pathway scores without requiring
+a design. When design contrasts are supplied, it also calculates differential
+pathway-score statistics under `results/<experiment>/matrices/ssGSVA/`.
 
 Use `--modules all` to run every installed optional module, or provide a
 comma-separated selection as more modules become available.

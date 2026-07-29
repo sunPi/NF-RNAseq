@@ -1,0 +1,11 @@
+.RData
+.Rhistory
+.Rproj.user/
+.Ruserdata
+/*.tar.gz
+/*.Rcheck/
+
+# Local analyses, backups, and third-party gene-set collections
+Documents/
+db/
+ssGSVA_bak.R

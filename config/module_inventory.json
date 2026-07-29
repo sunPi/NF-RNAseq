@@ -47,8 +47,8 @@
       "id": "dge",
       "category": "matrix",
       "execution_scope": "cohort",
-      "status": "planned",
-      "summary": "Perform differential gene-expression analysis from raw RSEM expected counts.",
+      "status": "implemented",
+      "summary": "Perform differential gene-expression analysis from canonical integer gene counts.",
       "requires_design": true,
       "requires_contrast": true,
       "supports_layout": [
@@ -56,7 +56,7 @@
       ],
       "inputs": [
         {
-          "name": "RSEM gene expected-count matrix",
+          "name": "annotated integer gene-count matrix",
           "required": true
         },
         {
@@ -138,7 +138,7 @@
       "id": "gsea",
       "category": "matrix",
       "execution_scope": "cohort",
-      "status": "planned",
+      "status": "implemented",
       "summary": "Calculate sample-level gene-set scores and contrast-level ranked pathway enrichment.",
       "requires_design": false,
       "requires_contrast": false,
@@ -194,7 +194,54 @@
         }
       ],
       "notes": [
-        "Gene-set versions and sources must be recorded in module metadata."
+        "Gene-set versions and sources must be recorded in module metadata.",
+        "The ranked_contrast mode is implemented by gsea with dqGSEA/fgsea.",
+        "The sample_scores mode is implemented by the independently runnable ssgsva module."
+      ]
+    },
+    {
+      "id": "ssgsva",
+      "category": "matrix",
+      "execution_scope": "cohort",
+      "status": "implemented",
+      "summary": "Calculate per-sample ssGSEA and GSVA pathway scores and optionally test score differences across design contrasts.",
+      "requires_design": false,
+      "requires_contrast": false,
+      "supports_layout": [
+        "not_applicable"
+      ],
+      "inputs": [
+        {
+          "name": "highest-expression symbol-deduplicated TPM matrix",
+          "required": true
+        },
+        {
+          "name": "versioned gene-set collection",
+          "required": true
+        },
+        {
+          "name": "validated design and contrasts",
+          "required": false
+        }
+      ],
+      "outputs": [
+        "sample-level ssGSEA score matrix",
+        "sample-level GSVA score matrix",
+        "differential pathway-score results per contrast",
+        "pathway score and differential plots",
+        "gene-set provenance metadata"
+      ],
+      "depends_on": [
+        "annotation"
+      ],
+      "tools": [
+        "ssGSVA",
+        "GSVA",
+        "limma"
+      ],
+      "notes": [
+        "Scoring does not require a design.",
+        "When design contrasts are supplied, differential pathway scores are calculated for both methods."
       ]
     },
     {
