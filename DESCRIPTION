@@ -1,0 +1,19 @@
+Package: ssGSVA
+Title: Single-Sample Pathway Enrichment
+Version: 2.0.0
+Authors@R: person("Janmesh", role = c("aut", "cre"),
+                  email = "jr530@users.noreply.github.com")
+Description: A standalone wrapper for calculating per-sample pathway
+    enrichment scores using the single-sample GSEA and GSVA methods.
+License: file LICENSE
+Encoding: UTF-8
+RoxygenNote: 7.3.2
+Imports:
+    GSEABase,
+    GSVA,
+    ggplot2,
+    ggprism
+Suggests:
+    readxl,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3

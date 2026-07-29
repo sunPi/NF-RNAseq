@@ -1,0 +1,5 @@
+^\.Rproj\.user$
+^.*\.Rproj$
+^Documents$
+^db$
+^ssGSVA_bak\.R$
