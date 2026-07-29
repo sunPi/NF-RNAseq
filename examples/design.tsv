@@ -1,0 +1,5 @@
+sample	condition	batch	subject
+sample_01	control	batch1	P01
+sample_02	control	batch2	P02
+sample_03	treated	batch1	P03
+sample_04	treated	batch2	P04

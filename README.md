@@ -138,6 +138,17 @@ Run one or more modules against a previously completed core experiment:
    --pipeline modules \
    --modules fusion
 
+Add validated sample metadata and one or more directed contrasts:
+
+ ./main.sh \
+   --assembly GRCh38 \
+   --layout paired \
+   --experiment study_01 \
+   --pipeline modules \
+   --modules dge \
+   --design study.design.tsv \
+   --contrast condition:treated:control
+
 Results are written below:
  results/<experiment>/
 
@@ -146,9 +157,11 @@ The main outputs include:
  - STAR alignments
  - RSEM gene and isoform results
  - Sample QC classifications
- - Expected-count matrix
- - TPM matrix
- - FPKM matrix
+ - ID-level expected-count matrix
+ - Annotated `gene_id`, `gene_name`, and `gene_type` count/TPM/FPKM matrices
+ - Unique-symbol highest-expression matrices for downstream activity analyses
+ - A matrix manifest describing quantifier, value type, annotation, and
+   duplicate-symbol handling
  - MultiQC report
  - Experiment run history in `project_info.tsv`
 
@@ -159,7 +172,34 @@ The ledger records the analysis mode and modules, assembly, read layout,
 input path, samples, timing, success or failure status, code revision,
 executed command, and results path.
 
+### Experimental designs and contrasts
+
+Design-aware cohort modules accept a TSV or CSV file through `--design`. The
+file must contain a unique `sample` column and may contain factors and
+covariates such as `condition`, `batch`, and `subject`. See
+`examples/design.tsv`.
+
+Contrasts are directed and repeatable:
+
+```text
+--contrast condition:treated:control
+```
+
+This means treated versus control; a positive effect is higher in treated.
+After QC, the pipeline verifies that every retained sample occurs exactly once,
+filters the design to retained samples in matrix order, and requires at least
+two retained samples in each contrast level. Normalized metadata and parsed
+contrasts are stored under `results/<experiment>/design/`.
+
 ## 4. Optional Modules
+
+The mutable inventory of implemented and planned biological modules is stored
+in `config/module_inventory.json` and validated by
+`config/module_inventory.schema.json`.
+
+The core expression utilities include `lib/handle_gene_dups.R`, which resolves
+duplicate gene symbols using the highest-expression locus by default after annotation.
+Canonical Ensembl-ID count matrices are retained unchanged.
 
 The fusion module is currently available. Install its software and reference
 resources for the required assembly before selecting it at runtime:

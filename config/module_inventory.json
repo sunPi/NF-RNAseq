@@ -1,0 +1,489 @@
+{
+  "$schema": "./module_inventory.schema.json",
+  "schema_version": "1.0.0",
+  "description": "Mutable inventory of implemented and planned NF-RNAseq biological analysis modules. Core pipeline infrastructure such as the design parser is intentionally excluded.",
+  "modules": [
+    {
+      "id": "annotation",
+      "category": "matrix",
+      "execution_scope": "cohort",
+      "status": "implemented",
+      "summary": "Add gene symbols, gene biotypes, transcript biotypes, and transcript-to-gene mappings to cohort expression matrices.",
+      "requires_design": false,
+      "requires_contrast": false,
+      "supports_layout": [
+        "not_applicable"
+      ],
+      "inputs": [
+        {
+          "name": "gene expression matrices",
+          "required": true
+        },
+        {
+          "name": "isoform expression matrices",
+          "required": false
+        },
+        {
+          "name": "reference GTF",
+          "required": true
+        }
+      ],
+      "outputs": [
+        "gene annotation table",
+        "transcript annotation table",
+        "annotated expression matrices"
+      ],
+      "tools": [
+        "Python",
+        "mapGeneID",
+        "handleGeneDups"
+      ],
+      "notes": [
+        "This should precede downstream modules that require gene symbols or biotypes.",
+        "Duplicate gene symbols default to the highest-expression locus; canonical Ensembl-ID raw counts remain unchanged."
+      ]
+    },
+    {
+      "id": "dge",
+      "category": "matrix",
+      "execution_scope": "cohort",
+      "status": "planned",
+      "summary": "Perform differential gene-expression analysis from raw RSEM expected counts.",
+      "requires_design": true,
+      "requires_contrast": true,
+      "supports_layout": [
+        "not_applicable"
+      ],
+      "inputs": [
+        {
+          "name": "RSEM gene expected-count matrix",
+          "required": true
+        },
+        {
+          "name": "validated design",
+          "required": true
+        },
+        {
+          "name": "validated contrasts",
+          "required": true
+        },
+        {
+          "name": "replicates",
+          "required": true
+        },
+        {
+          "name": "covariates such as batch",
+          "required": false
+        }
+      ],
+      "outputs": [
+        "normalized count matrix",
+        "complete differential-expression statistics per contrast",
+        "filtered significant-gene tables",
+        "PCA plots",
+        "sample-distance plots",
+        "model and QC diagnostics"
+      ],
+      "depends_on": [
+        "annotation"
+      ],
+      "tools": [
+        "DESeq2"
+      ]
+    },
+    {
+      "id": "dtu",
+      "category": "matrix",
+      "execution_scope": "cohort",
+      "status": "planned",
+      "summary": "Detect differential transcript usage and isoform switching independently of ordinary transcript differential expression.",
+      "requires_design": true,
+      "requires_contrast": true,
+      "supports_layout": [
+        "not_applicable"
+      ],
+      "inputs": [
+        {
+          "name": "isoform expected-count matrix",
+          "required": true
+        },
+        {
+          "name": "transcript-to-gene annotation",
+          "required": true
+        },
+        {
+          "name": "validated design",
+          "required": true
+        },
+        {
+          "name": "validated contrasts",
+          "required": true
+        }
+      ],
+      "outputs": [
+        "differential transcript-usage statistics",
+        "isoform-switch tables",
+        "transcript-usage visualizations"
+      ],
+      "depends_on": [
+        "annotation",
+        "isoforms"
+      ],
+      "tools": [
+        "DRIMSeq",
+        "stageR"
+      ]
+    },
+    {
+      "id": "gsea",
+      "category": "matrix",
+      "execution_scope": "cohort",
+      "status": "planned",
+      "summary": "Calculate sample-level gene-set scores and contrast-level ranked pathway enrichment.",
+      "requires_design": false,
+      "requires_contrast": false,
+      "supports_layout": [
+        "not_applicable"
+      ],
+      "inputs": [
+        {
+          "name": "annotated gene-expression matrix",
+          "required": true
+        },
+        {
+          "name": "versioned gene-set collection",
+          "required": true
+        },
+        {
+          "name": "DGE ranked statistics",
+          "required": false
+        }
+      ],
+      "outputs": [
+        "sample-level pathway score matrices",
+        "ranked enrichment results per contrast",
+        "pathway enrichment plots",
+        "gene-set provenance metadata"
+      ],
+      "depends_on": [
+        "annotation"
+      ],
+      "tools": [
+        "GSVA",
+        "fgsea"
+      ],
+      "modes": [
+        {
+          "name": "sample_scores",
+          "description": "Calculate ssGSEA or GSVA scores independently for each sample.",
+          "requires_design": false,
+          "requires_contrast": false,
+          "depends_on": [
+            "annotation"
+          ]
+        },
+        {
+          "name": "ranked_contrast",
+          "description": "Run ranked GSEA or fgsea from DGE statistics for each contrast.",
+          "requires_design": true,
+          "requires_contrast": true,
+          "depends_on": [
+            "annotation",
+            "dge"
+          ]
+        }
+      ],
+      "notes": [
+        "Gene-set versions and sources must be recorded in module metadata."
+      ]
+    },
+    {
+      "id": "decoupler",
+      "category": "matrix",
+      "execution_scope": "cohort",
+      "status": "planned",
+      "summary": "Infer transcription-factor and pathway activities from cohort expression matrices.",
+      "requires_design": false,
+      "requires_contrast": false,
+      "supports_layout": [
+        "not_applicable"
+      ],
+      "inputs": [
+        {
+          "name": "annotated gene-expression matrix",
+          "required": true
+        },
+        {
+          "name": "CollecTRI, PROGENy, or user-supplied network",
+          "required": true
+        }
+      ],
+      "outputs": [
+        "sample-level regulator-activity matrices",
+        "differential regulator-activity results"
+      ],
+      "depends_on": [
+        "annotation"
+      ],
+      "tools": [
+        "decoupleR",
+        "CollecTRI",
+        "PROGENy"
+      ],
+      "modes": [
+        {
+          "name": "activity",
+          "description": "Infer regulator activity independently for each sample.",
+          "requires_design": false,
+          "requires_contrast": false,
+          "depends_on": [
+            "annotation"
+          ]
+        },
+        {
+          "name": "differential_activity",
+          "description": "Compare regulator activities across a directed contrast.",
+          "requires_design": true,
+          "requires_contrast": true,
+          "depends_on": [
+            "annotation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "immune_deconvolution",
+      "category": "matrix",
+      "execution_scope": "cohort",
+      "status": "planned",
+      "summary": "Estimate immune-cell composition from bulk RNA-seq expression matrices.",
+      "requires_design": false,
+      "requires_contrast": false,
+      "supports_layout": [
+        "not_applicable"
+      ],
+      "inputs": [
+        {
+          "name": "annotated gene-expression matrix",
+          "required": true
+        }
+      ],
+      "outputs": [
+        "sample-level immune-cell fraction or score matrix",
+        "differential cell-abundance results"
+      ],
+      "depends_on": [
+        "annotation"
+      ],
+      "tools": [
+        "MCP-counter",
+        "quanTIseq",
+        "EPIC"
+      ],
+      "modes": [
+        {
+          "name": "cell_fractions",
+          "description": "Estimate cell fractions or abundance scores for each sample.",
+          "requires_design": false,
+          "requires_contrast": false,
+          "depends_on": [
+            "annotation"
+          ]
+        },
+        {
+          "name": "differential_abundance",
+          "description": "Compare inferred cell abundance across a directed contrast.",
+          "requires_design": true,
+          "requires_contrast": true,
+          "depends_on": [
+            "annotation"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "isoforms",
+      "category": "matrix",
+      "execution_scope": "cohort",
+      "status": "implemented",
+      "summary": "Aggregate per-sample RSEM transcript estimates into cohort expected-count, TPM, FPKM, and isoform-fraction matrices.",
+      "requires_design": false,
+      "requires_contrast": false,
+      "supports_layout": [
+        "not_applicable"
+      ],
+      "inputs": [
+        {
+          "name": "per-sample RSEM isoform results",
+          "required": true
+        }
+      ],
+      "outputs": [
+        "transcript expected-count matrix",
+        "transcript TPM matrix",
+        "transcript FPKM matrix",
+        "transcript isoform-fraction matrix"
+      ],
+      "tools": [
+        "RSEM",
+        "Python"
+      ]
+    },
+    {
+      "id": "fusion",
+      "category": "fastq_bam",
+      "execution_scope": "hybrid",
+      "status": "implemented",
+      "summary": "Detect, inspect, quantify, and aggregate fusion transcripts.",
+      "requires_design": false,
+      "requires_contrast": false,
+      "supports_layout": [
+        "single",
+        "paired"
+      ],
+      "inputs": [
+        {
+          "name": "trimmed FASTQ",
+          "required": true
+        },
+        {
+          "name": "assembly-specific fusion references",
+          "required": true
+        }
+      ],
+      "outputs": [
+        "STAR-Fusion calls",
+        "Arriba calls",
+        "FusionInspector results",
+        "cohort fusion-support matrices",
+        "fusion event catalog"
+      ],
+      "tools": [
+        "STAR-Fusion",
+        "Arriba",
+        "FusionInspector"
+      ]
+    },
+    {
+      "id": "trust4",
+      "category": "fastq_bam",
+      "execution_scope": "hybrid",
+      "status": "planned",
+      "summary": "Reconstruct TCR and BCR repertoires and aggregate cohort clonotype and repertoire summaries.",
+      "requires_design": false,
+      "requires_contrast": false,
+      "supports_layout": [
+        "single",
+        "paired"
+      ],
+      "inputs": [
+        {
+          "name": "trimmed FASTQ or genomic BAM",
+          "required": true
+        },
+        {
+          "name": "VDJ and IMGT reference",
+          "required": true
+        }
+      ],
+      "outputs": [
+        "TRUST4 report",
+        "AIRR rearrangement table",
+        "sample repertoire statistics",
+        "cohort clonotype matrices"
+      ],
+      "tools": [
+        "TRUST4"
+      ]
+    },
+    {
+      "id": "splicing",
+      "category": "fastq_bam",
+      "execution_scope": "cohort",
+      "status": "planned",
+      "summary": "Detect and compare junction- and event-level alternative splicing independently of transcript quantification.",
+      "requires_design": true,
+      "requires_contrast": true,
+      "supports_layout": [
+        "single",
+        "paired"
+      ],
+      "inputs": [
+        {
+          "name": "coordinate-sorted genomic BAM files",
+          "required": true
+        },
+        {
+          "name": "reference GTF",
+          "required": true
+        },
+        {
+          "name": "validated design and contrasts",
+          "required": true
+        },
+        {
+          "name": "biological replicates",
+          "required": true
+        }
+      ],
+      "outputs": [
+        "exon-skipping events and PSI",
+        "alternative 5-prime splice-site events and PSI",
+        "alternative 3-prime splice-site events and PSI",
+        "mutually exclusive exon events and PSI",
+        "retained-intron events and PSI",
+        "differential splicing statistics"
+      ],
+      "depends_on": [
+        "annotation"
+      ],
+      "tools": [
+        "rMATS"
+      ],
+      "notes": [
+        "LeafCutter may later supplement rMATS for annotation-light and novel junction analysis."
+      ]
+    },
+    {
+      "id": "rna_variants",
+      "category": "fastq_bam",
+      "execution_scope": "hybrid",
+      "status": "planned",
+      "summary": "Call variants from RNA-seq alignments with GATK and annotate passing calls with VEP.",
+      "requires_design": false,
+      "requires_contrast": false,
+      "supports_layout": [
+        "single",
+        "paired"
+      ],
+      "inputs": [
+        {
+          "name": "coordinate-sorted genomic BAM",
+          "required": true
+        },
+        {
+          "name": "assembly-specific genome reference",
+          "required": true
+        },
+        {
+          "name": "assembly-specific VEP cache",
+          "required": true
+        }
+      ],
+      "outputs": [
+        "filtered RNA variant VCF",
+        "VEP-annotated VCF",
+        "annotated mutation table",
+        "cohort RNA variant matrix"
+      ],
+      "tools": [
+        "GATK",
+        "VEP"
+      ],
+      "notes": [
+        "RNA calls require careful filtering for editing, allele-specific expression, mapping artifacts, and expression-depth effects.",
+        "This module must remain separate from germline and somatic DNA variant analysis."
+      ]
+    }
+  ]
+}

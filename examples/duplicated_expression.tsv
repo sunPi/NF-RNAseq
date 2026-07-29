@@ -1,0 +1,5 @@
+gene_id	gene_name	gene_type	sample_01	sample_02
+ENSG1	GENE_A	protein_coding	2	4
+ENSG2	GENE_A	protein_coding	6	8
+ENSG3	GENE_B	lncRNA	3	5
+ENSG4	PSEUDO1	processed_pseudogene	7	9
