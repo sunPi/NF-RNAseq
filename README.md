@@ -201,12 +201,13 @@ The core expression utilities include `lib/handle_gene_dups.R`, which resolves
 duplicate gene symbols using the highest-expression locus by default after annotation.
 Canonical Ensembl-ID count matrices are retained unchanged.
 
-The fusion module is currently available. Install its software and reference
-resources for the required assembly before selecting it at runtime:
+The fusion, isoform-aggregation, and DGE modules are currently available.
+Install the required module before selecting it at runtime:
 
 ```
 ./install_pipe.sh --add-modules fusion --assembly GRCh38
 ./install_pipe.sh --add-modules isoforms --assembly GRCh38
+./install_pipe.sh --add-modules dge --assembly GRCh38
 ```
 
 The module runs STAR-Fusion and Arriba using the trimmed FASTQ files produced
@@ -215,6 +216,12 @@ by the core pipeline. Module outputs are written below:
 ```
 results/<experiment>/<sample>/modules/fusion/
 ```
+
+DGE runs DESeq2 on the canonical annotated integer count matrix. It requires a
+design and at least one contrast and writes normalized counts, full and
+significant contrast tables, and QC plots below
+`results/<experiment>/matrices/dge/`. Design columns prefixed with
+`covariate_` are included as model covariates.
 
 Use `--modules all` to run every installed optional module, or provide a
 comma-separated selection as more modules become available.

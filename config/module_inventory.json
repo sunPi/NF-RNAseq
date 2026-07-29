@@ -47,8 +47,8 @@
       "id": "dge",
       "category": "matrix",
       "execution_scope": "cohort",
-      "status": "planned",
-      "summary": "Perform differential gene-expression analysis from raw RSEM expected counts.",
+      "status": "implemented",
+      "summary": "Perform differential gene-expression analysis from canonical integer gene counts.",
       "requires_design": true,
       "requires_contrast": true,
       "supports_layout": [
@@ -56,7 +56,7 @@
       ],
       "inputs": [
         {
-          "name": "RSEM gene expected-count matrix",
+          "name": "annotated integer gene-count matrix",
           "required": true
         },
         {

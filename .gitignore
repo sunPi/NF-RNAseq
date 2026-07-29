@@ -33,6 +33,8 @@
 !/modules/fusion/**
 !/modules/isoforms/
 !/modules/isoforms/**
+!/modules/dge/
+!/modules/dge/**
 
 ###############################################################################
 # Nextflow runtime and future-development artifacts
