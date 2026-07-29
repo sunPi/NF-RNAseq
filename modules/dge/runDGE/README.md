@@ -1,4 +1,4 @@
-# runDGE
+# DGE
 
 A validated DESeq2/limma workflow for raw counts or normalized expression. It
 is designed for standalone use and eventual invocation by an upstream RNA-seq

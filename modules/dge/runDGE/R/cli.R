@@ -59,7 +59,7 @@ dge_cli <- function(args = commandArgs(trailingOnly = TRUE)) {
     return(invisible(NULL))
   }
   if (any(c("-V", "--version") %in% args)) {
-    cat("runDGE 0.3.0\n")
+    cat("DGE 0.3.0\n")
     return(invisible(NULL))
   }
   config <- parse_dge_args(args)
