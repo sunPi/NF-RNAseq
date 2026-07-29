@@ -1,6 +1,7 @@
 # DGE module
 
-The `dge` cohort module runs DESeq2 on the pipeline's canonical annotated
+The `dge` cohort module embeds the standalone `runDGE` R package and runs
+DESeq2 on the pipeline's canonical annotated
 integer gene-count matrix:
 
 `matrices/annotated/gene_counts.tsv`
@@ -8,6 +9,22 @@ integer gene-count matrix:
 It deliberately does not use fractional RSEM expected counts or a
 gene-symbol-deduplicated matrix. Ensembl gene IDs remain the statistical row
 identity; gene symbols and biotypes are carried into result tables.
+
+## Embedded engine
+
+The published standalone DGE repository is maintained as a Git subtree under
+`runDGE/`. The imported snapshot is upstream commit `a05a30c` (runDGE 0.3.0).
+Its package API and CLI remain available independently. NF-RNAseq's
+`run_cohort.sh` is the pipeline adapter: it adds repeatable validated
+contrasts, annotated-matrix handling, cohort QC, and the pipeline output
+contract around the DGE engine.
+
+Future upstream updates can be imported with:
+
+```bash
+git subtree pull --prefix modules/dge/runDGE \
+  git@github.com:sunPi/DGE.git main --squash
+```
 
 ## Design
 

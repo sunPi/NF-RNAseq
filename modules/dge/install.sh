@@ -2,6 +2,8 @@
 
 set -Eeuo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+
 log_info() {
     printf '[dge-install] %s\n' "$*"
 }
@@ -17,8 +19,8 @@ Usage:
   install.sh --assembly GRCh37|GRCh38 --db-root DIR \
     --module-db-root DIR --conda-env NAME [--threads N]
 
-Installs DESeq2 in the pipeline Conda environment. No assembly-specific
-reference files are required.
+Installs the embedded runDGE package and its dependencies in the pipeline
+Conda environment. No assembly-specific reference files are required.
 EOF
 }
 
@@ -53,17 +55,29 @@ esac
 command -v conda >/dev/null 2>&1 || die "conda is required"
 
 if ! conda run --name "$CONDA_ENV" Rscript -e \
-    'quit(status=ifelse(requireNamespace("DESeq2", quietly=TRUE), 0, 1))'
+    'packages <- c("DESeq2", "limma", "ggplot2", "ggprism", "SummarizedExperiment");
+     quit(status=ifelse(all(vapply(packages, requireNamespace, logical(1), quietly=TRUE)), 0, 1))'
 then
-    log_info "Installing DESeq2 into Conda environment '$CONDA_ENV'"
+    log_info "Installing runDGE dependencies into Conda environment '$CONDA_ENV'"
     conda install --name "$CONDA_ENV" \
         --channel conda-forge --channel bioconda \
-        --yes bioconductor-deseq2
+        --yes \
+        bioconductor-deseq2 \
+        bioconductor-limma \
+        r-ggplot2 \
+        r-ggprism
 fi
 
+log_info "Installing embedded runDGE package"
+conda run --name "$CONDA_ENV" R CMD INSTALL --no-multiarch \
+    "${SCRIPT_DIR}/runDGE" ||
+    die "Embedded runDGE package installation failed"
+
 conda run --name "$CONDA_ENV" Rscript -e \
-    'stopifnot(requireNamespace("DESeq2", quietly=TRUE)); cat(as.character(packageVersion("DESeq2")), "\n")' ||
-    die "DESeq2 installation verification failed"
+    'stopifnot(requireNamespace("runDGE", quietly=TRUE));
+     cat("runDGE ", as.character(packageVersion("runDGE")),
+         "; DESeq2 ", as.character(packageVersion("DESeq2")), "\n", sep="")' ||
+    die "runDGE installation verification failed"
 
 CONFIG_DIR="${MODULE_DB_ROOT}/config"
 mkdir -p "$CONFIG_DIR"
@@ -72,6 +86,8 @@ DGE_ASSEMBLY='$ASSEMBLY'
 DGE_CONDA_ENV='$CONDA_ENV'
 DGE_INPUT='matrices/annotated/gene_counts.tsv'
 DGE_METHOD='DESeq2'
+DGE_ENGINE='runDGE'
+DGE_ENGINE_VERSION='0.3.0'
 EOF
 
 log_info "Installed $ASSEMBLY configuration in $CONFIG_DIR"
