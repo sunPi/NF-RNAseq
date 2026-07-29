@@ -15,9 +15,9 @@ identity; gene symbols and biotypes are carried into result tables.
 The published standalone DGE repository is maintained as a Git subtree under
 `DGE/`. The imported snapshot includes upstream commit `ed85727` (DGE 0.3.0).
 Its package API and CLI remain available independently. NF-RNAseq's
-`run_cohort.sh` is the pipeline adapter: it adds repeatable validated
-contrasts, annotated-matrix handling, cohort QC, and the pipeline output
-contract around the DGE engine.
+`run_cohort.sh` is the pipeline adapter: it invokes the installed DGE package
+API for every validated contrast and adds annotated-matrix handling, cohort
+QC, and the pipeline output contract.
 
 Future upstream updates can be imported with:
 
@@ -34,8 +34,8 @@ The module requires a validated design and at least one directed contrast:
 --design design.tsv --contrast condition:treated:control
 ```
 
-Every contrast factor is included in the model. Optional adjustment variables
-must be design columns prefixed with `covariate_`, for example
+Every contrast factor is mapped to DGE's explicit `condition` term. DGE 0.3.0
+supports an optional batch adjustment using a design column named `batch` or
 `covariate_batch`. Columns such as `replicate` remain metadata and are not
 silently treated as covariates.
 
@@ -52,6 +52,8 @@ Results are written under `matrices/dge`:
 - `QC/sample_distance_heatmap.pdf`
 - `contrasts/<contrast_id>/complete_results.tsv`
 - `contrasts/<contrast_id>/significant_padj_0.05.tsv`
+- `contrasts/<contrast_id>/normalized_counts.tsv`
+- `contrasts/<contrast_id>/dds.rds`
 - per-contrast MA and volcano plots
 
 Install with:

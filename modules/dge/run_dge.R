@@ -23,6 +23,7 @@ args <- parse_args(commandArgs(trailingOnly = TRUE))
 required <- c("counts", "design", "contrasts", "output-dir", "threads")
 missing <- required[!required %in% names(args)]
 if (length(missing)) fail("Missing arguments: ", paste(missing, collapse = ", "))
+if (!requireNamespace("DGE", quietly = TRUE)) fail("Embedded R package DGE is not installed")
 if (!requireNamespace("DESeq2", quietly = TRUE)) fail("R package DESeq2 is not installed")
 
 output_dir <- args[["output-dir"]]
@@ -75,7 +76,18 @@ storage.mode(count_matrix) <- "integer"
 rownames(count_matrix) <- counts_table$gene_id
 
 covariates <- grep("^covariate_", names(design), value = TRUE)
-model_factors <- unique(c(covariates, contrasts$factor))
+unsupported_covariates <- setdiff(covariates, "covariate_batch")
+if (length(unsupported_covariates)) {
+    fail(
+        "DGE 0.3.0 currently supports only batch adjustment; unsupported ",
+        "covariate columns: ", paste(unsupported_covariates, collapse = ", ")
+    )
+}
+if (all(c("batch", "covariate_batch") %in% names(design))) {
+    fail("Design must not contain both batch and covariate_batch")
+}
+adjustment_covariates <- intersect(c("batch", "covariate_batch"), names(design))
+model_factors <- unique(c(adjustment_covariates, contrasts$factor))
 unknown_factors <- setdiff(model_factors, names(design))
 if (length(unknown_factors)) {
     fail("Contrast factors absent from design: ", paste(unknown_factors, collapse = ", "))
@@ -148,6 +160,7 @@ dev.off()
 summary_rows <- list()
 annotation <- counts_table[, annotation_columns, drop = FALSE]
 rownames(annotation) <- annotation$gene_id
+engine_counts <- counts_table[, c("gene_id", sample_columns), drop = FALSE]
 
 for (index in seq_len(nrow(contrasts))) {
     contrast <- contrasts[index, , drop = FALSE]
@@ -158,12 +171,31 @@ for (index in seq_len(nrow(contrasts))) {
     contrast_dir <- file.path(output_dir, "contrasts", contrast_id)
     dir.create(contrast_dir, recursive = TRUE, showWarnings = FALSE)
 
-    result <- results(
-        dds, contrast = c(factor_name, numerator, denominator),
-        alpha = 0.05
+    engine_design <- data.frame(
+        sample_id = design$sample,
+        condition = as.character(design[[factor_name]]),
+        stringsAsFactors = FALSE
     )
-    result_df <- as.data.frame(result)
-    result_df$gene_id <- rownames(result_df)
+    if ("batch" %in% names(design)) {
+        engine_design$batch <- design$batch
+    } else if ("covariate_batch" %in% names(design)) {
+        engine_design$batch <- design$covariate_batch
+    }
+    prepared <- DGE::prepare_dge_inputs(
+        counts = engine_counts,
+        design = engine_design,
+        reference = denominator,
+        test = numerator,
+        min_total_count = 10L,
+        input_type = "raw_counts"
+    )
+    engine_result <- DGE::run_dge(
+        prepared,
+        adjusted_p = 0.05,
+        lfc_threshold = 0,
+        annotate = FALSE
+    )
+    result_df <- engine_result$dge
     result_df <- cbind(
         annotation[result_df$gene_id, annotation_columns, drop = FALSE],
         result_df[, c("baseMean", "log2FoldChange", "lfcSE", "stat", "pvalue", "padj"),
@@ -181,24 +213,41 @@ for (index in seq_len(nrow(contrasts))) {
         sep = "\t", row.names = FALSE, quote = FALSE
     )
 
-    pdf(file.path(contrast_dir, "MA_plot.pdf"), width = 7, height = 6)
-    plotMA(result, alpha = 0.05, main = paste(numerator, "vs", denominator))
-    dev.off()
-
-    volcano_p <- pmax(result_df$pvalue, .Machine$double.xmin, na.rm = FALSE)
-    volcano_col <- ifelse(
-        !is.na(result_df$padj) & result_df$padj < 0.05,
-        "#D73027", "#777777"
+    contrast_normalized <- engine_result$normalized_counts
+    contrast_normalized <- cbind(
+        annotation[contrast_normalized$gene_id, annotation_columns, drop = FALSE],
+        contrast_normalized[, setdiff(names(contrast_normalized), "gene_id"), drop = FALSE]
     )
-    pdf(file.path(contrast_dir, "volcano_plot.pdf"), width = 7, height = 6)
-    plot(
-        result_df$log2FoldChange, -log10(volcano_p),
-        pch = 16, cex = 0.45, col = volcano_col,
-        xlab = "log2 fold change", ylab = "-log10(p-value)",
+    write.table(
+        contrast_normalized, file.path(contrast_dir, "normalized_counts.tsv"),
+        sep = "\t", row.names = FALSE, quote = FALSE
+    )
+    saveRDS(engine_result$dds, file.path(contrast_dir, "dds.rds"))
+
+    engine_deseq_result <- DESeq2::results(
+        engine_result$dds,
+        contrast = c("condition", numerator, denominator),
+        alpha = 0.05
+    )
+    pdf(file.path(contrast_dir, "MA_plot.pdf"), width = 7, height = 6)
+    DESeq2::plotMA(
+        engine_deseq_result, alpha = 0.05,
         main = paste(numerator, "vs", denominator)
     )
-    abline(v = 0, lty = 2, col = "#555555")
     dev.off()
+
+    ggplot2::ggsave(
+        file.path(contrast_dir, "volcano_plot.png"),
+        DGE::plot_dge_volcano(engine_result),
+        width = 8, height = 7, dpi = 300
+    )
+    engine_heatmap <- DGE::plot_dge_heatmap(engine_result)
+    if (!is.null(engine_heatmap)) {
+        ggplot2::ggsave(
+            file.path(contrast_dir, "heatmap_top10_bottom10.png"),
+            engine_heatmap, width = 9, height = 8, dpi = 300
+        )
+    }
 
     summary_rows[[index]] <- data.frame(
         contrast_id = contrast_id, factor = factor_name,
@@ -214,11 +263,18 @@ write.table(
     sep = "\t", row.names = FALSE, quote = FALSE
 )
 metadata <- c(
-    "engine\tDGE-compatible NF-RNAseq cohort adapter",
-    "embedded_engine_version\t0.3.0",
+    paste0("engine\tDGE ", as.character(packageVersion("DGE"))),
     paste0("method\tDESeq2 ", as.character(packageVersion("DESeq2"))),
-    paste0("design_formula\t", paste(deparse(design_formula), collapse = "")),
-    paste0("covariates\t", if (length(covariates)) paste(covariates, collapse = ",") else "none"),
+    paste0("qc_design_formula\t", paste(deparse(design_formula), collapse = "")),
+    "contrast_design_formula\t~ batch + condition when batch is present; otherwise ~ condition",
+    paste0(
+        "covariates\t",
+        if (length(adjustment_covariates)) {
+            paste(adjustment_covariates, collapse = ",")
+        } else {
+            "none"
+        }
+    ),
     paste0("input_matrix\t", normalizePath(args$counts)),
     paste0("input_genes\t", nrow(count_matrix)),
     paste0("tested_genes\t", sum(keep)),
