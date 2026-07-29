@@ -19,7 +19,7 @@ Usage:
   install.sh --assembly GRCh37|GRCh38 --db-root DIR \
     --module-db-root DIR --conda-env NAME [--threads N]
 
-Installs the embedded runDGE package and its dependencies in the pipeline
+Installs the embedded DGE package and its dependencies in the pipeline
 Conda environment. No assembly-specific reference files are required.
 EOF
 }
@@ -58,7 +58,7 @@ if ! conda run --name "$CONDA_ENV" Rscript -e \
     'packages <- c("DESeq2", "limma", "ggplot2", "ggprism", "SummarizedExperiment");
      quit(status=ifelse(all(vapply(packages, requireNamespace, logical(1), quietly=TRUE)), 0, 1))'
 then
-    log_info "Installing runDGE dependencies into Conda environment '$CONDA_ENV'"
+    log_info "Installing DGE dependencies into Conda environment '$CONDA_ENV'"
     conda install --name "$CONDA_ENV" \
         --channel conda-forge --channel bioconda \
         --yes \
@@ -68,16 +68,16 @@ then
         r-ggprism
 fi
 
-log_info "Installing embedded runDGE package"
+log_info "Installing embedded DGE package"
 conda run --name "$CONDA_ENV" R CMD INSTALL --no-multiarch \
-    "${SCRIPT_DIR}/runDGE" ||
-    die "Embedded runDGE package installation failed"
+    "${SCRIPT_DIR}/DGE" ||
+    die "Embedded DGE package installation failed"
 
 conda run --name "$CONDA_ENV" Rscript -e \
-    'stopifnot(requireNamespace("runDGE", quietly=TRUE));
-     cat("runDGE ", as.character(packageVersion("runDGE")),
+    'stopifnot(requireNamespace("DGE", quietly=TRUE));
+     cat("DGE ", as.character(packageVersion("DGE")),
          "; DESeq2 ", as.character(packageVersion("DESeq2")), "\n", sep="")' ||
-    die "runDGE installation verification failed"
+    die "DGE installation verification failed"
 
 CONFIG_DIR="${MODULE_DB_ROOT}/config"
 mkdir -p "$CONFIG_DIR"
@@ -86,7 +86,7 @@ DGE_ASSEMBLY='$ASSEMBLY'
 DGE_CONDA_ENV='$CONDA_ENV'
 DGE_INPUT='matrices/annotated/gene_counts.tsv'
 DGE_METHOD='DESeq2'
-DGE_ENGINE='runDGE'
+DGE_ENGINE='DGE'
 DGE_ENGINE_VERSION='0.3.0'
 EOF
 

@@ -214,7 +214,7 @@ write.table(
     sep = "\t", row.names = FALSE, quote = FALSE
 )
 metadata <- c(
-    "engine\trunDGE-compatible NF-RNAseq cohort adapter",
+    "engine\tDGE-compatible NF-RNAseq cohort adapter",
     "embedded_engine_version\t0.3.0",
     paste0("method\tDESeq2 ", as.character(packageVersion("DESeq2"))),
     paste0("design_formula\t", paste(deparse(design_formula), collapse = "")),
