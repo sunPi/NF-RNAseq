@@ -35,6 +35,8 @@
 !/modules/isoforms/**
 !/modules/dge/
 !/modules/dge/**
+!/modules/gsea/
+!/modules/gsea/**
 
 ###############################################################################
 # Nextflow runtime and future-development artifacts

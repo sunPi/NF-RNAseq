@@ -138,7 +138,7 @@
       "id": "gsea",
       "category": "matrix",
       "execution_scope": "cohort",
-      "status": "planned",
+      "status": "in_development",
       "summary": "Calculate sample-level gene-set scores and contrast-level ranked pathway enrichment.",
       "requires_design": false,
       "requires_contrast": false,
@@ -194,7 +194,8 @@
         }
       ],
       "notes": [
-        "Gene-set versions and sources must be recorded in module metadata."
+        "Gene-set versions and sources must be recorded in module metadata.",
+        "The ranked_contrast mode is implemented with dqGSEA/fgsea; sample_scores remains planned."
       ]
     },
     {
