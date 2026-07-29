@@ -1,0 +1,19 @@
+Package: dqGSEA
+Title: Gene Set Enrichment Analysis from Differential Expression Results
+Version: 0.2.0
+Authors@R: person("Janmesh", role = c("aut", "cre"),
+                  email = "jr530@users.noreply.github.com")
+Description: Runs preranked gene set enrichment analysis from a differential
+    expression results table and a GMT pathway file. The package prepares a
+    ranked gene vector, runs fgsea, and writes publication-ready summaries.
+License: MIT + file LICENSE
+Encoding: UTF-8
+RoxygenNote: 7.3.2
+Imports:
+    BiocParallel,
+    fgsea,
+    ggplot2,
+    ggprism
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
