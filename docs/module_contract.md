@@ -7,12 +7,16 @@ entry point required by its scope.
 MODULE_SCOPE=sample|cohort|hybrid
 MODULE_REQUIRES_DESIGN=true|false
 MODULE_REQUIRES_CONTRASTS=true|false
+MODULE_OUTPUT_NAME=optional_output_directory
 ```
 
 - `sample`: `run_module.sh` is called once for each QC-included sample.
 - `cohort`: `run_cohort.sh` is called once for the complete experiment.
 - `hybrid`: `run_module.sh` is called per sample and
   `aggregate_module.py` is then called across the experiment.
+- `MODULE_OUTPUT_NAME` optionally overrides the generated results-directory
+  name without changing the lowercase module identifier used by `--modules`
+  and installation. It must be a single safe path component.
 
 `run_cohort.sh` receives:
 

@@ -41,7 +41,7 @@ silently treated as covariates.
 
 ## Outputs
 
-Results are written under `matrices/dge`:
+Results are written under `matrices/DGE`:
 
 - `normalized_counts.tsv`
 - `variance_stabilized_expression.tsv`

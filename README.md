@@ -220,8 +220,8 @@ results/<experiment>/<sample>/modules/fusion/
 DGE runs DESeq2 on the canonical annotated integer count matrix. It requires a
 design and at least one contrast and writes normalized counts, full and
 significant contrast tables, and QC plots below
-`results/<experiment>/matrices/dge/`. Design columns prefixed with
-`covariate_` are included as model covariates.
+`results/<experiment>/matrices/DGE/`. A `batch` or `covariate_batch` design
+column is included as a model covariate.
 
 Use `--modules all` to run every installed optional module, or provide a
 comma-separated selection as more modules become available.

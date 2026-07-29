@@ -357,6 +357,7 @@ SELECTED_MODULES=()
 declare -A MODULE_SCOPES=()
 declare -A MODULE_REQUIRES_DESIGN=()
 declare -A MODULE_REQUIRES_CONTRASTS=()
+declare -A MODULE_OUTPUT_NAMES=()
 
 resolve_selected_modules() {
     local requested_modules="$1"
@@ -366,6 +367,7 @@ resolve_selected_modules() {
     local module_scope
     local module_requires_design
     local module_requires_contrasts
+    local module_output_name
     local -a requested_list=()
     local -A seen_modules=()
 
@@ -408,11 +410,13 @@ resolve_selected_modules() {
         MODULE_SCOPE=""
         MODULE_REQUIRES_DESIGN=""
         MODULE_REQUIRES_CONTRASTS=""
+        MODULE_OUTPUT_NAME=""
         # shellcheck disable=SC1090
         source "$module_metadata"
         module_scope="${MODULE_SCOPE:-}"
         module_requires_design="${MODULE_REQUIRES_DESIGN:-false}"
         module_requires_contrasts="${MODULE_REQUIRES_CONTRASTS:-false}"
+        module_output_name="${MODULE_OUTPUT_NAME:-$module_name}"
         [[ "$module_scope" == "sample" ||
            "$module_scope" == "cohort" ||
            "$module_scope" == "hybrid" ]] ||
@@ -423,6 +427,8 @@ resolve_selected_modules() {
         [[ "$module_requires_contrasts" == "true" ||
            "$module_requires_contrasts" == "false" ]] ||
             die "Invalid MODULE_REQUIRES_CONTRASTS for '$module_name'"
+        [[ "$module_output_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] ||
+            die "Invalid MODULE_OUTPUT_NAME for '$module_name': $module_output_name"
         if [[ "$module_scope" == "sample" || "$module_scope" == "hybrid" ]]; then
             [[ -x "${SCRIPT_DIR}/modules/${module_name}/run_module.sh" ]] ||
                 die "Module '$module_name' requires executable run_module.sh"
@@ -446,6 +452,7 @@ resolve_selected_modules() {
         MODULE_SCOPES["$module_name"]="$module_scope"
         MODULE_REQUIRES_DESIGN["$module_name"]="$module_requires_design"
         MODULE_REQUIRES_CONTRASTS["$module_name"]="$module_requires_contrasts"
+        MODULE_OUTPUT_NAMES["$module_name"]="$module_output_name"
     done
 
     (( ${#SELECTED_MODULES[@]} > 0 )) ||
@@ -553,6 +560,7 @@ run_selected_modules() {
     local module_aggregator
     local cohort_runner
     local module_scope
+    local module_output_name
     local index
     local sample
     local contrast
@@ -562,6 +570,7 @@ run_selected_modules() {
 
     for module_name in "${SELECTED_MODULES[@]}"; do
         module_scope="${MODULE_SCOPES[$module_name]}"
+        module_output_name="${MODULE_OUTPUT_NAMES[$module_name]}"
 
         if [[ "$module_scope" == "sample" || "$module_scope" == "hybrid" ]]; then
             module_runner="${SCRIPT_DIR}/modules/${module_name}/run_module.sh"
@@ -571,7 +580,7 @@ run_selected_modules() {
                     --sample "$sample"
                     --layout "$READ_LAYOUT"
                     --read1 "${R1_PATHS[$index]}"
-                    --output-dir "${RESULTS_DIR}/${sample}/modules/${module_name}"
+                    --output-dir "${RESULTS_DIR}/${sample}/modules/${module_output_name}"
                     --assembly "$ASSEMBLY"
                     --db-root "$DB_ROOT"
                     --threads "$THREADS"
@@ -589,7 +598,7 @@ run_selected_modules() {
         if [[ "$module_scope" == "hybrid" && -f "$module_aggregator" ]]; then
             aggregate_arguments=(
                 --results-dir "$RESULTS_DIR"
-                --output-dir "${MATRIX_DIR}/${module_name}"
+                --output-dir "${MATRIX_DIR}/${module_output_name}"
             )
             for sample in "${SAMPLES[@]}"; do
                 aggregate_arguments+=(--sample "$sample")
@@ -604,7 +613,7 @@ run_selected_modules() {
             cohort_arguments=(
                 --results-dir "$RESULTS_DIR"
                 --matrix-dir "$MATRIX_DIR"
-                --output-dir "${MATRIX_DIR}/${module_name}"
+                --output-dir "${MATRIX_DIR}/${module_output_name}"
                 --samples-file "${QC_DIR}/qc_included_samples.txt"
                 --assembly "$ASSEMBLY"
                 --db-root "$DB_ROOT"
