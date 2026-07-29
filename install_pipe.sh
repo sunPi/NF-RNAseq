@@ -522,6 +522,7 @@ configure_assembly() {
 
     GTF="$ANNOTATION_DIR/$GTF_NAME"
     GTF_GZ="${GTF}.gz"
+    GENE_ANNOTATION="$ANNOTATION_DIR/gene_annotation.tsv"
 
     RSEM_REFERENCE_PREFIX="$RSEM_DIR/reference"
     SJDB_OVERHANG=$((READ_LENGTH - 1))
@@ -608,6 +609,7 @@ prepare_annotations() {
     require_command wget
     require_command gzip
     require_command awk
+    require_command python3
 
     log "Preparing $ASSEMBLY annotation"
 
@@ -653,6 +655,16 @@ prepare_annotations() {
     fi
 
     log "GTF annotation appears valid."
+
+    if [[ ! -s "$GENE_ANNOTATION" ]]; then
+        log "Building reproducible gene annotation table"
+        python3 "$SCRIPT_DIR/lib/map_gene_ids.py" \
+            --build-mapping \
+            --gtf "$GTF" \
+            --output "$GENE_ANNOTATION"
+    else
+        log "Gene annotation table already exists: $GENE_ANNOTATION"
+    fi
 }
 
 ###############################################################################
@@ -883,6 +895,8 @@ annotation:
   gtf:
     file: "$GTF_NAME"
     url: "$GTF_URL"
+  gene_mapping:
+    file: "$(basename "$GENE_ANNOTATION")"
 
 star:
   read_length: $READ_LENGTH
@@ -993,6 +1007,7 @@ write_bash_config() {
             'FASTA_FAI="${FASTA}.fai"' \
             'FASTA_DICT="${FASTA%.*}.dict"' \
             'GTF="$ANNOTATION_DIR/$GTF_NAME"' \
+            'GENE_ANNOTATION="$ANNOTATION_DIR/gene_annotation.tsv"' \
             'SJDB_OVERHANG=$((READ_LENGTH - 1))' \
             '' \
             '# Convenient pipeline-facing aliases.' \
@@ -1042,6 +1057,8 @@ validate_runtime_contract() {
     for required_project_file in \
         "$SCRIPT_DIR/main.sh" \
         "$SCRIPT_DIR/config/qc.config" \
+        "$SCRIPT_DIR/lib/map_gene_ids.py" \
+        "$SCRIPT_DIR/lib/handle_gene_dups.R" \
         "$SCRIPT_DIR/modules/qc/qc_validator.py"; do
         [[ -s "$required_project_file" ]] ||
             die "Required base repository file is missing or empty: $required_project_file"
@@ -1076,6 +1093,7 @@ validate_reference_bundle() {
         "${FASTA}.fai"
         "$FASTA_DICT"
         "$GTF"
+        "$GENE_ANNOTATION"
         "$STAR_INDEX_DIR/Genome"
         "$STAR_INDEX_DIR/SA"
         "$STAR_INDEX_DIR/SAindex"

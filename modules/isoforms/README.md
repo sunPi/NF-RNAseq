@@ -37,6 +37,9 @@ QC-included sample. `transcript_isoform_fraction.tsv` contains RSEM `IsoPct`,
 the percentage of a gene's estimated expression assigned to each transcript.
 This is a transcript usage fraction and not splice-junction PSI.
 
+The module is cohort-scoped: it runs once per experiment and does not require
+retained FASTQ files in modules-only mode.
+
 An existing experiment can also be aggregated directly:
 
 ```bash

@@ -50,7 +50,8 @@ usage() {
 Usage:
   $(basename "$0") --assembly <ASSEMBLY> --layout <single|paired> \\
     --experiment <PATH> --input <DIRECTORY> [--pipeline core|optional] \\
-    [--modules all|MODULE[,MODULE...]]
+    [--modules all|MODULE[,MODULE...]] [--design FILE] \\
+    [--contrast FACTOR:NUMERATOR:DENOMINATOR]
 
   $(basename "$0") --assembly <ASSEMBLY> --layout <single|paired> \\
     --experiment <PATH> --pipeline modules \\
@@ -66,6 +67,8 @@ Options:
   -i, --input DIRECTORY  Directory containing FASTQ files; searched recursively
   -p, --pipeline MODE    core, optional, or modules; default: core
   -m, --modules VALUE    all or a comma-separated optional-module list
+  -d, --design FILE      Sample metadata TSV/CSV with a required sample column
+  -c, --contrast VALUE   FACTOR:NUMERATOR:DENOMINATOR; may be repeated
 
   -h, --help            Show this help message.
 
@@ -99,6 +102,8 @@ EXPERIMENT_NAME=""
 INPUT_DIR_REQUESTED=""
 PIPELINE_MODE="core"
 MODULES_REQUESTED=""
+DESIGN_FILE=""
+CONTRASTS=()
 
 while (( $# > 0 )); do
     case "$1" in
@@ -182,6 +187,28 @@ while (( $# > 0 )); do
             shift
             ;;
 
+        -d|--design)
+            [[ $# -ge 2 ]] || die "Missing value after $1"
+            DESIGN_FILE="$2"
+            shift 2
+            ;;
+
+        --design=*)
+            DESIGN_FILE="${1#*=}"
+            shift
+            ;;
+
+        -c|--contrast)
+            [[ $# -ge 2 ]] || die "Missing value after $1"
+            CONTRASTS+=("$2")
+            shift 2
+            ;;
+
+        --contrast=*)
+            CONTRASTS+=("${1#*=}")
+            shift
+            ;;
+
         -h|--help)
             usage
             exit 0
@@ -192,6 +219,9 @@ while (( $# > 0 )); do
             ;;
     esac
 done
+
+(( ${#CONTRASTS[@]} == 0 )) || [[ -n "$DESIGN_FILE" ]] ||
+    die "--contrast requires --design"
 
 [[ -n "$ASSEMBLY_REQUESTED" ]] ||
     die "No reference assembly specified. Use --assembly GRCh37 or --assembly GRCh38"
@@ -248,6 +278,7 @@ ROOT_DIR="$(pwd -P)"
 CONFIG_FILE="${SCRIPT_DIR}/config/main.config"
 QC_CONFIG_FILE="${SCRIPT_DIR}/config/qc.config"
 QC_VALIDATOR="${SCRIPT_DIR}/modules/qc/qc_validator.py"
+DESIGN_VALIDATOR="${SCRIPT_DIR}/lib/design_parser.py"
 
 [[ -f "$CONFIG_FILE" ]] ||
     die "Installation configuration not found: $CONFIG_FILE"
@@ -257,6 +288,9 @@ QC_VALIDATOR="${SCRIPT_DIR}/modules/qc/qc_validator.py"
 
 [[ -f "$QC_VALIDATOR" ]] ||
     die "QC validator not found: $QC_VALIDATOR"
+
+[[ -f "$DESIGN_VALIDATOR" ]] ||
+    die "Design validator not found: $DESIGN_VALIDATOR"
 
 # shellcheck disable=SC1090
 source "$CONFIG_FILE"
@@ -281,6 +315,7 @@ REQUIRED_CONFIG_VARIABLES=(
     STAR_INDEX
     GENOME_FASTA
     GTF
+    GENE_ANNOTATION
     RSEM_REFERENCE
     ASSEMBLY
 )
@@ -314,26 +349,30 @@ MATRIX_DIR="${RESULTS_DIR}/matrices"
 QC_DIR="${RESULTS_DIR}/QC"
 MULTIQC_DIR="${QC_DIR}/multiqc"
 LOG_DIR="${QC_DIR}/logs"
+DESIGN_DIR="${RESULTS_DIR}/design"
+NORMALIZED_DESIGN=""
+CONTRASTS_FILE=""
 
 SELECTED_MODULES=()
+declare -A MODULE_SCOPES=()
+declare -A MODULE_REQUIRES_DESIGN=()
+declare -A MODULE_REQUIRES_CONTRASTS=()
 
 resolve_selected_modules() {
     local requested_modules="$1"
     local module_name
-    local module_runner
+    local module_metadata
     local module_config
+    local module_scope
+    local module_requires_design
+    local module_requires_contrasts
     local -a requested_list=()
     local -A seen_modules=()
 
     if [[ "${requested_modules,,}" == "all" ]]; then
         mapfile -t requested_list < <(
-            find "${SCRIPT_DIR}/modules" \
-                -mindepth 2 \
-                -maxdepth 2 \
-                -type f \
-                -name run_module.sh \
-                -executable \
-                -printf '%h\n' |
+            find "${SCRIPT_DIR}/modules" -mindepth 2 -maxdepth 2 \
+                -type f -name module.config -printf '%h\n' |
                 sed 's#.*/##' |
                 sort -u
         )
@@ -354,23 +393,97 @@ resolve_selected_modules() {
         [[ -z "${seen_modules[$module_name]+x}" ]] ||
             die "Optional module was requested more than once: $module_name"
 
-        module_runner="${SCRIPT_DIR}/modules/${module_name}/run_module.sh"
-        [[ -x "$module_runner" ]] ||
-            die "Optional module has no executable runtime: $module_name"
-
         module_config="${DB_ROOT}/shared/${module_name}_module/config/${ASSEMBLY}.config"
-        [[ -s "$module_config" ]] ||
+        if [[ ! -s "$module_config" ]]; then
+            if [[ "${requested_modules,,}" == "all" ]]; then
+                log_info "Skipping optional module '$module_name' (not installed for $ASSEMBLY)"
+                continue
+            fi
             die "Optional module '$module_name' is not installed for $ASSEMBLY: $module_config"
+        fi
+
+        module_metadata="${SCRIPT_DIR}/modules/${module_name}/module.config"
+        [[ -s "$module_metadata" ]] ||
+            die "Optional module metadata is missing: $module_metadata"
+        MODULE_SCOPE=""
+        MODULE_REQUIRES_DESIGN=""
+        MODULE_REQUIRES_CONTRASTS=""
+        # shellcheck disable=SC1090
+        source "$module_metadata"
+        module_scope="${MODULE_SCOPE:-}"
+        module_requires_design="${MODULE_REQUIRES_DESIGN:-false}"
+        module_requires_contrasts="${MODULE_REQUIRES_CONTRASTS:-false}"
+        [[ "$module_scope" == "sample" ||
+           "$module_scope" == "cohort" ||
+           "$module_scope" == "hybrid" ]] ||
+            die "Invalid MODULE_SCOPE for '$module_name': $module_scope"
+        [[ "$module_requires_design" == "true" ||
+           "$module_requires_design" == "false" ]] ||
+            die "Invalid MODULE_REQUIRES_DESIGN for '$module_name'"
+        [[ "$module_requires_contrasts" == "true" ||
+           "$module_requires_contrasts" == "false" ]] ||
+            die "Invalid MODULE_REQUIRES_CONTRASTS for '$module_name'"
+        if [[ "$module_scope" == "sample" || "$module_scope" == "hybrid" ]]; then
+            [[ -x "${SCRIPT_DIR}/modules/${module_name}/run_module.sh" ]] ||
+                die "Module '$module_name' requires executable run_module.sh"
+        fi
+        if [[ "$module_scope" == "cohort" ]]; then
+            [[ -x "${SCRIPT_DIR}/modules/${module_name}/run_cohort.sh" ]] ||
+                die "Module '$module_name' requires executable run_cohort.sh"
+        fi
+        if [[ "$module_scope" == "hybrid" ]]; then
+            [[ -f "${SCRIPT_DIR}/modules/${module_name}/aggregate_module.py" ]] ||
+                die "Module '$module_name' requires aggregate_module.py"
+        fi
+        [[ "$module_requires_design" != "true" || -n "$DESIGN_FILE" ]] ||
+            die "Optional module '$module_name' requires --design"
+        [[ "$module_requires_contrasts" != "true" ||
+           ${#CONTRASTS[@]} -gt 0 ]] ||
+            die "Optional module '$module_name' requires at least one --contrast"
 
         seen_modules["$module_name"]=1
         SELECTED_MODULES+=("$module_name")
+        MODULE_SCOPES["$module_name"]="$module_scope"
+        MODULE_REQUIRES_DESIGN["$module_name"]="$module_requires_design"
+        MODULE_REQUIRES_CONTRASTS["$module_name"]="$module_requires_contrasts"
     done
 
+    (( ${#SELECTED_MODULES[@]} > 0 )) ||
+        die "None of the requested optional modules are installed for $ASSEMBLY"
     log_info "Selected optional modules: ${SELECTED_MODULES[*]}"
+}
+
+prepare_design() {
+    local included_samples_file="${QC_DIR}/qc_included_samples.txt"
+    local -a design_arguments
+    local contrast
+
+    [[ -n "$DESIGN_FILE" ]] || return 0
+    [[ -s "$DESIGN_FILE" ]] || die "Design file not found or empty: $DESIGN_FILE"
+    [[ -s "$included_samples_file" ]] ||
+        die "QC-included sample list is required to validate the design"
+
+    mkdir -p "$DESIGN_DIR"
+    NORMALIZED_DESIGN="${DESIGN_DIR}/design.tsv"
+    CONTRASTS_FILE="${DESIGN_DIR}/contrasts.tsv"
+    design_arguments=(
+        --design "$DESIGN_FILE"
+        --samples-file "$included_samples_file"
+        --output-design "$NORMALIZED_DESIGN"
+        --output-contrasts "$CONTRASTS_FILE"
+    )
+    for contrast in "${CONTRASTS[@]}"; do
+        design_arguments+=(--contrast "$contrast")
+    done
+    python3 "$DESIGN_VALIDATOR" "${design_arguments[@]}" ||
+        die "Design or contrast validation failed"
+    log_info "Validated experiment design: $NORMALIZED_DESIGN"
 }
 
 load_completed_core_samples() {
     local included_samples_file="${QC_DIR}/qc_included_samples.txt"
+    local module_name
+    local requires_sample_inputs=false
     local sample
     local trimmed_r1
     local trimmed_r2
@@ -384,6 +497,16 @@ load_completed_core_samples() {
 
     R1_PATHS=()
     R2_PATHS=()
+
+    for module_name in "${SELECTED_MODULES[@]}"; do
+        if [[ "${MODULE_SCOPES[$module_name]}" == "sample" ||
+              "${MODULE_SCOPES[$module_name]}" == "hybrid" ]]; then
+            requires_sample_inputs=true
+            break
+        fi
+    done
+
+    [[ "$requires_sample_inputs" == true ]] || return 0
 
     for sample in "${SAMPLES[@]}"; do
         [[ "$sample" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] ||
@@ -428,34 +551,42 @@ run_selected_modules() {
     local module_name
     local module_runner
     local module_aggregator
+    local cohort_runner
+    local module_scope
     local index
     local sample
+    local contrast
     local -a module_arguments
     local -a aggregate_arguments
+    local -a cohort_arguments
 
     for module_name in "${SELECTED_MODULES[@]}"; do
-        module_runner="${SCRIPT_DIR}/modules/${module_name}/run_module.sh"
-        for index in "${!SAMPLES[@]}"; do
-            sample="${SAMPLES[$index]}"
-            module_arguments=(
-                --sample "$sample"
-                --layout "$READ_LAYOUT"
-                --read1 "${R1_PATHS[$index]}"
-                --output-dir "${RESULTS_DIR}/${sample}/modules/${module_name}"
-                --assembly "$ASSEMBLY"
-                --db-root "$DB_ROOT"
-                --threads "$THREADS"
-            )
-            if [[ "$READ_LAYOUT" == "paired" ]]; then
-                module_arguments+=(--read2 "${R2_PATHS[$index]}")
-            fi
+        module_scope="${MODULE_SCOPES[$module_name]}"
 
-            log_info "Running optional module '$module_name' for $sample"
-            "$module_runner" "${module_arguments[@]}"
-        done
+        if [[ "$module_scope" == "sample" || "$module_scope" == "hybrid" ]]; then
+            module_runner="${SCRIPT_DIR}/modules/${module_name}/run_module.sh"
+            for index in "${!SAMPLES[@]}"; do
+                sample="${SAMPLES[$index]}"
+                module_arguments=(
+                    --sample "$sample"
+                    --layout "$READ_LAYOUT"
+                    --read1 "${R1_PATHS[$index]}"
+                    --output-dir "${RESULTS_DIR}/${sample}/modules/${module_name}"
+                    --assembly "$ASSEMBLY"
+                    --db-root "$DB_ROOT"
+                    --threads "$THREADS"
+                )
+                if [[ "$READ_LAYOUT" == "paired" ]]; then
+                    module_arguments+=(--read2 "${R2_PATHS[$index]}")
+                fi
+
+                log_info "Running optional module '$module_name' for $sample"
+                "$module_runner" "${module_arguments[@]}"
+            done
+        fi
 
         module_aggregator="${SCRIPT_DIR}/modules/${module_name}/aggregate_module.py"
-        if [[ -f "$module_aggregator" ]]; then
+        if [[ "$module_scope" == "hybrid" && -f "$module_aggregator" ]]; then
             aggregate_arguments=(
                 --results-dir "$RESULTS_DIR"
                 --output-dir "${MATRIX_DIR}/${module_name}"
@@ -466,6 +597,30 @@ run_selected_modules() {
 
             log_info "Aggregating optional module '$module_name' across the experiment"
             python3 "$module_aggregator" "${aggregate_arguments[@]}"
+        fi
+
+        if [[ "$module_scope" == "cohort" ]]; then
+            cohort_runner="${SCRIPT_DIR}/modules/${module_name}/run_cohort.sh"
+            cohort_arguments=(
+                --results-dir "$RESULTS_DIR"
+                --matrix-dir "$MATRIX_DIR"
+                --output-dir "${MATRIX_DIR}/${module_name}"
+                --samples-file "${QC_DIR}/qc_included_samples.txt"
+                --assembly "$ASSEMBLY"
+                --db-root "$DB_ROOT"
+                --threads "$THREADS"
+            )
+            if [[ -n "$NORMALIZED_DESIGN" ]]; then
+                cohort_arguments+=(
+                    --design "$NORMALIZED_DESIGN"
+                    --contrasts-file "$CONTRASTS_FILE"
+                )
+                for contrast in "${CONTRASTS[@]}"; do
+                    cohort_arguments+=(--contrast "$contrast")
+                done
+            fi
+            log_info "Running cohort module '$module_name'"
+            "$cohort_runner" "${cohort_arguments[@]}"
         fi
     done
 }
@@ -610,8 +765,10 @@ if [[ "$PIPELINE_MODE" != "modules" ]]; then
         fastp
         STAR
         rsem-calculate-expression
+        featureCounts
         samtools
         multiqc
+        Rscript
     )
 
     for command_name in "${REQUIRED_COMMANDS[@]}"; do
@@ -644,6 +801,9 @@ done
 [[ -s "$GTF" ]] ||
     die "GTF file not found or empty: $GTF"
 
+[[ -s "$GENE_ANNOTATION" ]] ||
+    die "Gene annotation table not found or empty: $GENE_ANNOTATION"
+
 RSEM_REFERENCE_FILES=(
     "${RSEM_REFERENCE}.grp"
     "${RSEM_REFERENCE}.seq"
@@ -662,6 +822,7 @@ fi
 
 if [[ "$PIPELINE_MODE" == "modules" ]]; then
     load_completed_core_samples
+    prepare_design
     run_selected_modules
 
     log_info "Optional modules completed successfully"
@@ -894,6 +1055,7 @@ for index in "${!SAMPLES[@]}"; do
     sample_fastp_dir="${sample_results_dir}/fastp"
     sample_star_dir="${sample_results_dir}/star"
     sample_rsem_dir="${sample_results_dir}/rsem"
+    sample_featurecounts_dir="${sample_results_dir}/featurecounts"
     sample_log_dir="${sample_results_dir}/logs"
 
     mkdir -p \
@@ -902,6 +1064,7 @@ for index in "${!SAMPLES[@]}"; do
         "$sample_fastp_dir" \
         "$sample_star_dir" \
         "$sample_rsem_dir" \
+        "$sample_featurecounts_dir" \
         "$sample_log_dir"
 
     if [[ "$READ_LAYOUT" == "paired" ]]; then
@@ -921,6 +1084,7 @@ for index in "${!SAMPLES[@]}"; do
     genomic_bam_index="${genomic_bam}.bai"
 
     rsem_prefix="${sample_rsem_dir}/${sample}"
+    featurecounts_output="${sample_featurecounts_dir}/${sample}.featureCounts.tsv"
 
     ########################################################################
     # 7.1 Raw FASTQ quality control
@@ -1034,7 +1198,39 @@ for index in "${!SAMPLES[@]}"; do
         die "samtools did not produce a BAM index for sample: $sample"
 
     ########################################################################
-    # 7.5 RSEM quantification
+    # 7.5 FeatureCounts integer gene quantification
+    ########################################################################
+
+    log_info "Running FeatureCounts: $sample"
+
+    featurecounts_layout_arguments=()
+    if [[ "$READ_LAYOUT" == "paired" ]]; then
+        featurecounts_layout_arguments+=(--countReadPairs -p -B -C)
+    fi
+
+    begin_timed_step "$sample" "featurecounts"
+    featureCounts \
+        -T "$THREADS" \
+        -F GTF \
+        -t exon \
+        -g gene_id \
+        -s 0 \
+        -Q 10 \
+        "${featurecounts_layout_arguments[@]}" \
+        -a "$GTF" \
+        -o "$featurecounts_output" \
+        "$genomic_bam" \
+        > "${sample_log_dir}/FeatureCounts.stdout.log" \
+        2> "${sample_log_dir}/FeatureCounts.stderr.log"
+    finish_timed_step "success"
+
+    [[ -s "$featurecounts_output" ]] ||
+        die "FeatureCounts output was not produced or is empty for sample: $sample"
+    [[ -s "${featurecounts_output}.summary" ]] ||
+        die "FeatureCounts summary was not produced for sample: $sample"
+
+    ########################################################################
+    # 7.6 RSEM quantification
     ########################################################################
 
     log_info "Running RSEM: $sample"
@@ -1102,6 +1298,7 @@ mapfile -t QC_INCLUDED_SAMPLES < "${QC_DIR}/qc_included_samples.txt"
 
 SAMPLES=("${QC_INCLUDED_SAMPLES[@]}")
 log_info "QC retained ${#SAMPLES[@]} sample(s) for experiment-level matrices"
+prepare_design
 
 ################################################################################
 # 9. Collect RSEM gene result files
@@ -1176,18 +1373,120 @@ generate_rsem_matrix() {
         die "Generated matrix is missing or empty: $output_file"
 }
 
-COUNTS_MATRIX="${MATRIX_DIR}/gene_expected_counts.tsv"
-TPM_MATRIX="${MATRIX_DIR}/gene_TPM.tsv"
-FPKM_MATRIX="${MATRIX_DIR}/gene_FPKM.tsv"
+generate_featurecounts_matrix() {
+    local output_file="$1"
+    local temporary_dir
+    local index
+    local sample
+    local result_file
+    local value_file
+    local -a value_files=()
 
-log_info "Generating gene-level expected-count matrix"
-generate_rsem_matrix 5 "$COUNTS_MATRIX"
+    temporary_dir="$(mktemp -d "${MATRIX_DIR}/.featurecounts_tmp.XXXXXX")" ||
+        die "Could not create a FeatureCounts matrix temporary directory"
+
+    for index in "${!SAMPLES[@]}"; do
+        sample="${SAMPLES[$index]}"
+        result_file="${RESULTS_DIR}/${sample}/featurecounts/${sample}.featureCounts.tsv"
+        [[ -s "$result_file" ]] ||
+            die "FeatureCounts result is missing or empty: $result_file"
+        cut -f1 "$result_file" | tail -n +3 > "${temporary_dir}/${index}.ids"
+        value_file="${temporary_dir}/${index}.values"
+        cut -f7 "$result_file" | tail -n +3 > "$value_file"
+        if (( index > 0 )) &&
+           ! cmp -s "${temporary_dir}/0.ids" "${temporary_dir}/${index}.ids"; then
+            rm -rf "$temporary_dir"
+            die "FeatureCounts gene order differs for sample: $sample"
+        fi
+        if ! awk '/^[0-9]+$/ {next} {exit 1}' "$value_file"; then
+            rm -rf "$temporary_dir"
+            die "FeatureCounts produced a non-integer value for sample: $sample"
+        fi
+        value_files+=("$value_file")
+    done
+
+    {
+        printf 'gene_id'
+        for sample in "${SAMPLES[@]}"; do
+            printf '\t%s' "$sample"
+        done
+        printf '\n'
+        paste "${temporary_dir}/0.ids" "${value_files[@]}"
+    } > "$output_file"
+    rm -rf "$temporary_dir"
+    [[ -s "$output_file" ]] || die "Could not generate matrix: $output_file"
+}
+
+EXPRESSION_MATRIX_DIR="${MATRIX_DIR}/expression"
+ANNOTATED_MATRIX_DIR="${MATRIX_DIR}/annotated"
+DEDUPLICATED_MATRIX_DIR="${ANNOTATED_MATRIX_DIR}/deduplicated"
+mkdir -p "$EXPRESSION_MATRIX_DIR" "$ANNOTATED_MATRIX_DIR" "$DEDUPLICATED_MATRIX_DIR"
+
+RAW_COUNTS_MATRIX="${EXPRESSION_MATRIX_DIR}/gene_counts.tsv"
+RSEM_COUNTS_MATRIX="${EXPRESSION_MATRIX_DIR}/gene_rsem_expected_counts.tsv"
+RAW_TPM_MATRIX="${EXPRESSION_MATRIX_DIR}/gene_TPM.tsv"
+RAW_FPKM_MATRIX="${EXPRESSION_MATRIX_DIR}/gene_FPKM.tsv"
+COUNTS_MATRIX="${ANNOTATED_MATRIX_DIR}/gene_counts.tsv"
+TPM_MATRIX="${ANNOTATED_MATRIX_DIR}/gene_TPM.tsv"
+FPKM_MATRIX="${ANNOTATED_MATRIX_DIR}/gene_FPKM.tsv"
+SYMBOL_COUNTS_MATRIX="${DEDUPLICATED_MATRIX_DIR}/gene_counts.highest.tsv"
+SYMBOL_TPM_MATRIX="${DEDUPLICATED_MATRIX_DIR}/gene_TPM.highest.tsv"
+SYMBOL_FPKM_MATRIX="${DEDUPLICATED_MATRIX_DIR}/gene_FPKM.highest.tsv"
+
+log_info "Generating integer FeatureCounts gene-count matrix"
+generate_featurecounts_matrix "$RAW_COUNTS_MATRIX"
+
+log_info "Generating RSEM expected-count matrix"
+generate_rsem_matrix 5 "$RSEM_COUNTS_MATRIX"
 
 log_info "Generating gene-level TPM matrix"
-generate_rsem_matrix 6 "$TPM_MATRIX"
+generate_rsem_matrix 6 "$RAW_TPM_MATRIX"
 
 log_info "Generating gene-level FPKM matrix"
-generate_rsem_matrix 7 "$FPKM_MATRIX"
+generate_rsem_matrix 7 "$RAW_FPKM_MATRIX"
+
+log_info "Annotating gene-level expression matrices"
+python3 "$SCRIPT_DIR/lib/map_gene_ids.py" \
+    --input "$RAW_COUNTS_MATRIX" \
+    --mapping "$GENE_ANNOTATION" \
+    --output "$COUNTS_MATRIX"
+python3 "$SCRIPT_DIR/lib/map_gene_ids.py" \
+    --input "$RAW_TPM_MATRIX" \
+    --mapping "$GENE_ANNOTATION" \
+    --output "$TPM_MATRIX"
+python3 "$SCRIPT_DIR/lib/map_gene_ids.py" \
+    --input "$RAW_FPKM_MATRIX" \
+    --mapping "$GENE_ANNOTATION" \
+    --output "$FPKM_MATRIX"
+
+log_info "Resolving duplicate gene symbols using highest total expression"
+Rscript "$SCRIPT_DIR/lib/handle_gene_dups.R" \
+    --input "$COUNTS_MATRIX" \
+    --output "$SYMBOL_COUNTS_MATRIX" \
+    --strategy highest
+Rscript "$SCRIPT_DIR/lib/handle_gene_dups.R" \
+    --input "$TPM_MATRIX" \
+    --output "$SYMBOL_TPM_MATRIX" \
+    --strategy highest
+Rscript "$SCRIPT_DIR/lib/handle_gene_dups.R" \
+    --input "$FPKM_MATRIX" \
+    --output "$SYMBOL_FPKM_MATRIX" \
+    --strategy highest
+
+MATRIX_MANIFEST="${MATRIX_DIR}/matrix_manifest.tsv"
+{
+    printf 'matrix_id\tquantifier\tvalue_type\tannotation\tduplicate_symbols\tpath\n'
+    printf 'gene_counts\tfeatureCounts\tinteger\tgene_id\tretained\t%s\n' "$RAW_COUNTS_MATRIX"
+    printf 'gene_rsem_expected_counts\tRSEM\tcontinuous\tgene_id\tretained\t%s\n' "$RSEM_COUNTS_MATRIX"
+    printf 'gene_TPM\tRSEM\tcontinuous\tgene_id\tretained\t%s\n' "$RAW_TPM_MATRIX"
+    printf 'gene_FPKM\tRSEM\tcontinuous\tgene_id\tretained\t%s\n' "$RAW_FPKM_MATRIX"
+    printf 'annotated_gene_counts\tfeatureCounts\tinteger\tgene_id,gene_name,gene_type\tretained\t%s\n' "$COUNTS_MATRIX"
+    printf 'annotated_gene_TPM\tRSEM\tcontinuous\tgene_id,gene_name,gene_type\tretained\t%s\n' "$TPM_MATRIX"
+    printf 'annotated_gene_FPKM\tRSEM\tcontinuous\tgene_id,gene_name,gene_type\tretained\t%s\n' "$FPKM_MATRIX"
+    printf 'symbol_gene_counts\tfeatureCounts\tinteger\tgene_id,gene_name,gene_type\thighest\t%s\n' "$SYMBOL_COUNTS_MATRIX"
+    printf 'symbol_gene_TPM\tRSEM\tcontinuous\tgene_id,gene_name,gene_type\thighest\t%s\n' "$SYMBOL_TPM_MATRIX"
+    printf 'symbol_gene_FPKM\tRSEM\tcontinuous\tgene_id,gene_name,gene_type\thighest\t%s\n' "$SYMBOL_FPKM_MATRIX"
+} > "$MATRIX_MANIFEST"
 
 ################################################################################
 # 11. MultiQC report
@@ -1235,6 +1534,9 @@ log_info "QC status:     ${QC_DIR}/sample_qc_status.csv"
 log_info "Counts matrix: $COUNTS_MATRIX"
 log_info "TPM matrix:    $TPM_MATRIX"
 log_info "FPKM matrix:   $FPKM_MATRIX"
+log_info "Symbol counts: $SYMBOL_COUNTS_MATRIX"
+log_info "Symbol TPM:    $SYMBOL_TPM_MATRIX"
+log_info "Matrix index:  $MATRIX_MANIFEST"
 log_info "MultiQC:       $MULTIQC_REPORT"
 log_info "Project info:  $PROJECT_INFO_FILE"
 if [[ "$PIPELINE_MODE" == "optional" ]]; then
