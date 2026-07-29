@@ -37,6 +37,8 @@
 !/modules/dge/**
 !/modules/gsea/
 !/modules/gsea/**
+!/modules/ssgsva/
+!/modules/ssgsva/**
 
 ###############################################################################
 # Nextflow runtime and future-development artifacts

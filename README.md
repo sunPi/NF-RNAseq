@@ -201,8 +201,8 @@ The core expression utilities include `lib/handle_gene_dups.R`, which resolves
 duplicate gene symbols using the highest-expression locus by default after annotation.
 Canonical Ensembl-ID count matrices are retained unchanged.
 
-The fusion, isoform-aggregation, DGE, and ranked GSEA modules are currently
-available.
+The fusion, isoform-aggregation, DGE, ranked GSEA, and sample-level ssGSVA
+modules are currently available.
 Install the required module before selecting it at runtime:
 
 ```
@@ -210,6 +210,7 @@ Install the required module before selecting it at runtime:
 ./install_pipe.sh --add-modules isoforms --assembly GRCh38
 ./install_pipe.sh --add-modules dge --assembly GRCh38
 ./install_pipe.sh --add-modules gsea --assembly GRCh38
+./install_pipe.sh --add-modules ssgsva --assembly GRCh38
 ```
 
 The module runs STAR-Fusion and Arriba using the trimmed FASTQ files produced
@@ -227,6 +228,10 @@ column is included as a model covariate.
 
 Ranked GSEA consumes the complete DGE statistics for every contrast and writes
 fgsea results under `results/<experiment>/matrices/GSEA/`.
+
+ssGSVA calculates per-sample ssGSEA and GSVA pathway scores without requiring
+a design. When design contrasts are supplied, it also calculates differential
+pathway-score statistics under `results/<experiment>/matrices/ssGSVA/`.
 
 Use `--modules all` to run every installed optional module, or provide a
 comma-separated selection as more modules become available.
