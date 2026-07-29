@@ -1,0 +1,7 @@
+export(prepare_dge_inputs)
+export(run_dge)
+export(run_limma_dge)
+export(plot_dge_volcano)
+export(plot_dge_heatmap)
+export(write_dge_results)
+export(dge_cli)
