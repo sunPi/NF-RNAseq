@@ -48,6 +48,10 @@
 !/modules/ssgsva/
 !/modules/ssgsva/**
 
+# Generated Python bytecode
+__pycache__/
+*.py[cod]
+
 ###############################################################################
 # Nextflow runtime and future-development artifacts
 ###############################################################################
