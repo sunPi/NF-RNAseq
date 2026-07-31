@@ -19,6 +19,22 @@ parse_args <- function(values) {
     result
 }
 
+select_highest_expression_symbol <- function(results) {
+    valid_symbol <- !is.na(results$gene_name) & nzchar(trimws(results$gene_name))
+    results <- results[valid_symbol, , drop = FALSE]
+    if (!nrow(results)) fail("No mapped HUGO symbols remain after DGE annotation")
+
+    expression_order <- order(
+        results$gene_name,
+        -results$baseMean,
+        results$gene_id,
+        na.last = TRUE
+    )
+    results <- results[expression_order, , drop = FALSE]
+    results <- results[!duplicated(results$gene_name), , drop = FALSE]
+    results[order(results$padj, na.last = TRUE), , drop = FALSE]
+}
+
 args <- parse_args(commandArgs(trailingOnly = TRUE))
 required <- c("counts", "design", "contrasts", "output-dir", "threads")
 missing <- required[!required %in% names(args)]
@@ -58,10 +74,14 @@ if (anyDuplicated(counts_table$gene_id)) fail("Count matrix contains duplicate g
 if (anyDuplicated(design$sample)) fail("Design contains duplicate samples")
 
 sample_columns <- setdiff(names(counts_table), annotation_columns)
-if (!setequal(sample_columns, design$sample)) {
-    fail("Count-matrix samples and design samples do not match")
+missing_count_samples <- setdiff(design$sample, sample_columns)
+if (length(missing_count_samples)) {
+    fail(
+        "Design samples are missing from the count matrix: ",
+        paste(missing_count_samples, collapse = ", ")
+    )
 }
-design <- design[match(sample_columns, design$sample), , drop = FALSE]
+sample_columns <- design$sample
 rownames(design) <- design$sample
 
 count_matrix <- as.matrix(counts_table[, sample_columns, drop = FALSE])
@@ -195,6 +215,12 @@ for (index in seq_len(nrow(contrasts))) {
         lfc_threshold = 0,
         annotate = FALSE
     )
+    engine_result$dge$gene_symbol <- annotation[
+        engine_result$dge$gene_id, "gene_name"
+    ]
+    engine_result$significant$gene_symbol <- annotation[
+        engine_result$significant$gene_id, "gene_name"
+    ]
     result_df <- engine_result$dge
     result_df <- cbind(
         annotation[result_df$gene_id, annotation_columns, drop = FALSE],
@@ -202,7 +228,13 @@ for (index in seq_len(nrow(contrasts))) {
                   drop = FALSE]
     )
     result_df <- result_df[order(result_df$padj, na.last = TRUE), , drop = FALSE]
-    significant <- result_df[!is.na(result_df$padj) & result_df$padj < 0.05, , drop = FALSE]
+    significant <- result_df[
+        !is.na(result_df$padj) & result_df$padj < 0.05, , drop = FALSE
+    ]
+    symbol_results <- select_highest_expression_symbol(result_df)
+    symbol_significant <- symbol_results[
+        !is.na(symbol_results$padj) & symbol_results$padj < 0.05, , drop = FALSE
+    ]
 
     write.table(
         result_df, file.path(contrast_dir, "complete_results.tsv"),
@@ -212,6 +244,27 @@ for (index in seq_len(nrow(contrasts))) {
         significant, file.path(contrast_dir, "significant_padj_0.05.tsv"),
         sep = "\t", row.names = FALSE, quote = FALSE
     )
+    write.table(
+        symbol_results,
+        file.path(contrast_dir, "complete_results.symbol_highest.tsv"),
+        sep = "\t", row.names = FALSE, quote = FALSE
+    )
+    write.table(
+        symbol_significant,
+        file.path(contrast_dir, "significant_padj_0.05.symbol_highest.tsv"),
+        sep = "\t", row.names = FALSE, quote = FALSE
+    )
+
+    selected_ids <- symbol_results$gene_id
+    engine_result$dge <- engine_result$dge[
+        match(selected_ids, engine_result$dge$gene_id), , drop = FALSE
+    ]
+    engine_result$dge$gene_symbol <- symbol_results$gene_name
+    engine_result$significant <- engine_result$dge[
+        !is.na(engine_result$dge$padj) &
+            engine_result$dge$padj < engine_result$adjusted_p,
+        , drop = FALSE
+    ]
 
     contrast_normalized <- engine_result$normalized_counts
     contrast_normalized <- cbind(
@@ -254,6 +307,8 @@ for (index in seq_len(nrow(contrasts))) {
         numerator = numerator, denominator = denominator,
         tested_genes = nrow(result_df),
         significant_padj_0.05 = nrow(significant),
+        tested_unique_symbols = nrow(symbol_results),
+        significant_unique_symbols_padj_0.05 = nrow(symbol_significant),
         stringsAsFactors = FALSE
     )
 }
@@ -279,6 +334,7 @@ metadata <- c(
     paste0("input_genes\t", nrow(count_matrix)),
     paste0("tested_genes\t", sum(keep)),
     "prefilter\trowSums(counts) >= 10",
+    "symbol_duplicate_strategy\thighest DESeq2 baseMean; Ensembl gene_id breaks ties",
     "significance\tBenjamini-Hochberg adjusted p-value < 0.05"
 )
 writeLines(c("key\tvalue", metadata), file.path(output_dir, "run_metadata.tsv"))

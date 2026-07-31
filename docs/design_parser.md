@@ -10,8 +10,9 @@ the pipeline's core function set, not an optional biological module.
 
 ## Design format
 
-The input may be tab- or comma-separated and must contain a unique `sample`
-column. Other columns represent experimental factors or covariates:
+The input may be tab- or comma-separated and must contain a unique `sample`,
+`sample_id`, or `SampleID` column. The normalized design always uses `sample`.
+Other columns represent experimental factors or covariates:
 
 ```text
 sample	condition	batch	subject
@@ -34,12 +35,15 @@ represents a higher value in treated samples.
   --contrast condition:treated:control
 ```
 
-The parser filters and orders the design using the QC-included sample list,
-validates contrast levels and replicates, and writes:
+The samples listed in the design define the analysis subset. Every listed
+sample must occur in the QC-included experiment sample list; samples omitted
+from the design remain available to experiment-wide and non-design analyses.
+The parser validates contrast levels and replicates and writes:
 
 ```text
 results/study_01/design/design.tsv
 results/study_01/design/contrasts.tsv
+results/study_01/design/analysis_samples.txt
 ```
 
 ## Standalone usage
@@ -50,5 +54,6 @@ python3 lib/design_parser.py \
   --samples-file results/study_01/QC/qc_included_samples.txt \
   --output-design results/study_01/design/design.tsv \
   --output-contrasts results/study_01/design/contrasts.tsv \
+  --output-samples results/study_01/design/analysis_samples.txt \
   --contrast condition:treated:control
 ```

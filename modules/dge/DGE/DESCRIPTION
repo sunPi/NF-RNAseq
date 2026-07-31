@@ -1,6 +1,6 @@
 Package: DGE
 Title: Reproducible Differential Gene Expression with DESeq2
-Version: 0.3.0
+Version: 0.4.0
 Authors@R: person("J.", "R.", role = c("aut", "cre"), email = "jr530@users.noreply.github.com")
 Description: Validates RNA-seq expression matrices and experiment designs, runs
     DESeq2 for raw counts or limma-trend for normalized expression, optionally
@@ -9,6 +9,7 @@ License: Apache License (>= 2)
 Encoding: UTF-8
 Imports:
     DESeq2,
+    EnhancedVolcano,
     ggplot2,
     ggprism,
     limma,

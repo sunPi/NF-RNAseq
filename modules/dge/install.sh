@@ -55,7 +55,7 @@ esac
 command -v conda >/dev/null 2>&1 || die "conda is required"
 
 if ! conda run --name "$CONDA_ENV" Rscript -e \
-    'packages <- c("DESeq2", "limma", "ggplot2", "ggprism", "SummarizedExperiment");
+    'packages <- c("DESeq2", "EnhancedVolcano", "limma", "ggplot2", "ggprism", "SummarizedExperiment");
      quit(status=ifelse(all(vapply(packages, requireNamespace, logical(1), quietly=TRUE)), 0, 1))'
 then
     log_info "Installing DGE dependencies into Conda environment '$CONDA_ENV'"
@@ -63,6 +63,7 @@ then
         --channel conda-forge --channel bioconda \
         --yes \
         bioconductor-deseq2 \
+        bioconductor-enhancedvolcano \
         bioconductor-limma \
         r-ggplot2 \
         r-ggprism
@@ -87,7 +88,7 @@ DGE_CONDA_ENV='$CONDA_ENV'
 DGE_INPUT='matrices/annotated/gene_counts.tsv'
 DGE_METHOD='DESeq2'
 DGE_ENGINE='DGE'
-DGE_ENGINE_VERSION='0.3.0'
+DGE_ENGINE_VERSION='0.4.0'
 EOF
 
 log_info "Installed $ASSEMBLY configuration in $CONFIG_DIR"

@@ -8,12 +8,15 @@ integer gene-count matrix:
 
 It deliberately does not use fractional RSEM expected counts or a
 gene-symbol-deduplicated matrix. Ensembl gene IDs remain the statistical row
-identity; gene symbols and biotypes are carried into result tables.
+identity; gene symbols and biotypes are carried into result tables. After
+DESeq2, the module also produces a unique-HUGO view by retaining the Ensembl
+locus with the highest `baseMean` for every duplicated symbol. Volcano plots
+and ranked GSEA use this post-DGE view.
 
 ## Embedded engine
 
 The published standalone DGE repository is maintained as a Git subtree under
-`DGE/`. The imported snapshot includes upstream commit `ed85727` (DGE 0.3.0).
+`DGE/`. The embedded plotting integration is versioned as DGE 0.4.0.
 Its package API and CLI remain available independently. NF-RNAseq's
 `run_cohort.sh` is the pipeline adapter: it invokes the installed DGE package
 API for every validated contrast and adds annotated-matrix handling, cohort
@@ -34,7 +37,7 @@ The module requires a validated design and at least one directed contrast:
 --design design.tsv --contrast condition:treated:control
 ```
 
-Every contrast factor is mapped to DGE's explicit `condition` term. DGE 0.3.0
+Every contrast factor is mapped to DGE's explicit `condition` term. DGE 0.4.0
 supports an optional batch adjustment using a design column named `batch` or
 `covariate_batch`. Columns such as `replicate` remain metadata and are not
 silently treated as covariates.
@@ -51,7 +54,9 @@ Results are written under `matrices/DGE`:
 - `QC/sample_distances.tsv`
 - `QC/sample_distance_heatmap.pdf`
 - `contrasts/<contrast_id>/complete_results.tsv`
+- `contrasts/<contrast_id>/complete_results.symbol_highest.tsv`
 - `contrasts/<contrast_id>/significant_padj_0.05.tsv`
+- `contrasts/<contrast_id>/significant_padj_0.05.symbol_highest.tsv`
 - `contrasts/<contrast_id>/normalized_counts.tsv`
 - `contrasts/<contrast_id>/dds.rds`
 - per-contrast MA and volcano plots

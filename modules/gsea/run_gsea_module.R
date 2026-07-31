@@ -46,7 +46,7 @@ for (index in seq_len(nrow(contrasts))) {
     contrast <- contrasts[index, , drop = FALSE]
     contrast_id <- contrast$contrast_id[[1L]]
     dge_path <- file.path(
-        args[["dge-dir"]], contrast_id, "complete_results.tsv"
+        args[["dge-dir"]], contrast_id, "complete_results.symbol_highest.tsv"
     )
     if (!file.exists(dge_path)) {
         fail("DGE result missing for contrast ", contrast_id, ": ", dge_path)
@@ -60,7 +60,8 @@ for (index in seq_len(nrow(contrasts))) {
         gene_column = "gene_name",
         rank_column = "stat",
         min_size = 10L,
-        max_size = 500L
+        max_size = 500L,
+        title = contrast$numerator[[1L]]
     )
     complete <- read.csv(
         file.path(contrast_dir, "gsea.csv"),
@@ -92,6 +93,7 @@ metadata <- c(
     paste0("gmt\t", normalizePath(args$gmt)),
     paste0("gmt_sha256\t", args[["gmt-sha256"]]),
     "gene_identifier\tgene_name",
+    "duplicate_symbols\thighest DESeq2 baseMean selected by DGE",
     "ranking_statistic\tDGE Wald statistic (stat)",
     "significance\tBenjamini-Hochberg adjusted p-value <= 0.05",
     "mode\tranked_contrast"

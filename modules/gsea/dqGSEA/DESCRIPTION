@@ -1,6 +1,6 @@
 Package: dqGSEA
 Title: Gene Set Enrichment Analysis from Differential Expression Results
-Version: 0.2.0
+Version: 0.3.0
 Authors@R: person("Janmesh", role = c("aut", "cre"),
                   email = "jr530@users.noreply.github.com")
 Description: Runs preranked gene set enrichment analysis from a differential

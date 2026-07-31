@@ -37,6 +37,14 @@
 !/modules/dge/**
 !/modules/gsea/
 !/modules/gsea/**
+!/modules/go/
+!/modules/go/**
+!/modules/decoupler/
+!/modules/decoupler/**
+!/modules/hytesum/
+!/modules/hytesum/**
+!/modules/sarsig/
+!/modules/sarsig/**
 !/modules/ssgsva/
 !/modules/ssgsva/**
 

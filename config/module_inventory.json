@@ -95,7 +95,7 @@
       "id": "dtu",
       "category": "matrix",
       "execution_scope": "cohort",
-      "status": "planned",
+      "status": "implemented",
       "summary": "Detect differential transcript usage and isoform switching independently of ordinary transcript differential expression.",
       "requires_design": true,
       "requires_contrast": true,
@@ -200,6 +200,47 @@
       ]
     },
     {
+      "id": "go",
+      "category": "matrix",
+      "execution_scope": "cohort",
+      "status": "implemented",
+      "summary": "Perform ranked Gene Ontology enrichment from DGE results for each contrast.",
+      "requires_design": true,
+      "requires_contrast": true,
+      "supports_layout": [
+        "not_applicable"
+      ],
+      "inputs": [
+        {
+          "name": "HUGO-symbol DGE rankings",
+          "required": true
+        },
+        {
+          "name": "validated contrasts",
+          "required": true
+        }
+      ],
+      "outputs": [
+        "complete and significant GO enrichment tables per contrast",
+        "GO dot plots",
+        "serialized clusterProfiler results",
+        "run metadata"
+      ],
+      "depends_on": [
+        "annotation",
+        "dge"
+      ],
+      "tools": [
+        "clusterProfiler",
+        "gseGO",
+        "org.Hs.eg.db"
+      ],
+      "notes": [
+        "Tests BP, CC, and MF ontologies using DGE log2 fold-change rankings.",
+        "The human OrgDb is symbol-based and shared by GRCh37 and GRCh38 configurations."
+      ]
+    },
+    {
       "id": "ssgsva",
       "category": "matrix",
       "execution_scope": "cohort",
@@ -245,10 +286,97 @@
       ]
     },
     {
+      "id": "hytesum",
+      "category": "matrix",
+      "execution_scope": "cohort",
+      "status": "implemented",
+      "summary": "Calculate the composite Hypoxia, TGF-beta signaling, and EMT ssGSEA HyTEsum score.",
+      "requires_design": false,
+      "requires_contrast": false,
+      "supports_layout": [
+        "not_applicable"
+      ],
+      "inputs": [
+        {
+          "name": "highest-expression symbol-deduplicated TPM matrix",
+          "required": true
+        },
+        {
+          "name": "pinned HyTE Hallmark signatures",
+          "required": true
+        },
+        {
+          "name": "validated design",
+          "required": false
+        }
+      ],
+      "outputs": [
+        "per-sample Hypoxia, TGF-beta, and EMT scores",
+        "raw and min-max-normalized HyTEsum scores",
+        "median High and Low sample groups",
+        "HyTEsum score plot and compatibility workbook"
+      ],
+      "depends_on": [
+        "annotation"
+      ],
+      "tools": [
+        "analyse_HyTEsum",
+        "ssGSVA",
+        "computeHyTEsum"
+      ],
+      "notes": [
+        "The full Hallmark collection is scored before selecting the three components so ssGSEA normalization matches the legacy workflow.",
+        "High is strictly above the cohort median; samples tied at the median remain Low."
+      ]
+    },
+    {
+      "id": "sarsig",
+      "category": "matrix",
+      "execution_scope": "cohort",
+      "status": "implemented",
+      "summary": "Calculate the EMT Reversal study's 63-gene SarSig score across cohort samples.",
+      "requires_design": false,
+      "requires_contrast": false,
+      "supports_layout": [
+        "not_applicable"
+      ],
+      "inputs": [
+        {
+          "name": "highest-expression symbol-deduplicated TPM matrix",
+          "required": true
+        },
+        {
+          "name": "versioned 63-gene SarSig signature",
+          "required": true
+        },
+        {
+          "name": "validated design",
+          "required": false
+        }
+      ],
+      "outputs": [
+        "per-sample SarSig scores",
+        "per-gene cohort z-score matrix",
+        "signature coverage and missing-gene reports",
+        "SarSig score plot"
+      ],
+      "depends_on": [
+        "annotation"
+      ],
+      "tools": [
+        "computeSarSig"
+      ],
+      "notes": [
+        "Scores are sums of gene-wise z-scores calculated across all QC-included experiment samples.",
+        "The module uses log2(TPM+1), and constant genes contribute zero.",
+        "Scores are cohort-relative and should only be compared within the same scoring run."
+      ]
+    },
+    {
       "id": "decoupler",
       "category": "matrix",
       "execution_scope": "cohort",
-      "status": "planned",
+      "status": "implemented",
       "summary": "Infer transcription-factor and pathway activities from cohort expression matrices.",
       "requires_design": false,
       "requires_contrast": false,

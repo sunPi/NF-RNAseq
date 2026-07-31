@@ -7,25 +7,22 @@ HIGH_COLOUR <- "#400257"
 #' @export
 plot_dge_volcano <- function(result) {
   data <- result$dge
-  data$direction <- "Not significant"
-  sig <- !is.na(data$padj) & data$padj < result$adjusted_p &
-    abs(data$log2FoldChange) >= result$lfc_threshold
-  data$direction[sig & data$log2FoldChange < 0] <- "Low / negative"
-  data$direction[sig & data$log2FoldChange >= 0] <- "High / positive"
-  data$minus_log10_padj <- -log10(pmax(data$padj, .Machine$double.xmin))
-  ggplot2::ggplot(data, ggplot2::aes(x = log2FoldChange,
-                                     y = minus_log10_padj,
-                                     colour = direction)) +
-    ggplot2::geom_point(alpha = .7, size = 1.5, na.rm = TRUE) +
-    ggplot2::geom_hline(yintercept = -log10(result$adjusted_p),
-                        linetype = "dashed", colour = "grey40") +
-    ggplot2::scale_colour_manual(values = c(
-      "Low / negative" = LOW_COLOUR, "Not significant" = "grey75",
-      "High / positive" = HIGH_COLOUR)) +
-    ggplot2::labs(
-      title = paste(result$test, "vs", result$reference),
-      x = "log2 fold change", y = "-log10 adjusted P", colour = NULL) +
-    ggprism::theme_prism(base_size = 12)
+  labels <- if ("gene_symbol" %in% names(data)) {
+    as.character(data$gene_symbol)
+  } else {
+    as.character(data$gene_id)
+  }
+  labels[is.na(labels) | !nzchar(labels)] <-
+    as.character(data$gene_id[is.na(labels) | !nzchar(labels)])
+
+  EnhancedVolcano::EnhancedVolcano(
+    data,
+    lab = labels,
+    x = "log2FoldChange",
+    y = "pvalue"
+  ) +
+    ggprism::theme_prism() +
+    ggplot2::labs(title = NULL, subtitle = NULL)
 }
 
 #' Plot a top/bottom DGE heatmap

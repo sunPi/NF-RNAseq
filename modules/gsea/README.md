@@ -1,11 +1,13 @@
 # GSEA module
 
 The `gsea` cohort module embeds the standalone `dqGSEA` package and implements
-contrast-level preranked gene-set enrichment. It consumes the complete
-statistics produced by the NF-RNAseq DGE module for every validated contrast.
+contrast-level preranked gene-set enrichment. It consumes the DGE
+`complete_results.symbol_highest.tsv` statistics for every validated contrast,
+so each HUGO symbol contributes exactly one rank. Duplicate Ensembl loci are
+resolved upstream by retaining the highest DESeq2 `baseMean`.
 
 The imported source is maintained as a Git subtree under `dqGSEA/` and
-currently tracks upstream commit `d3d6d26` (dqGSEA 0.2.0).
+currently includes the legacy plotting workflow as dqGSEA 0.3.0.
 
 ## Installation
 
@@ -42,7 +44,8 @@ Results are written under `matrices/GSEA/contrasts/<contrast_id>/`:
 - `gsea.csv`: complete pathway results
 - `gsea_significant.csv`: pathways with adjusted p-value at most 0.05
 - `gene_ranks.csv`: exact ranked input used by fgsea
-- `gsea_plot.png`: top significant positive and negative pathways
+- `gsea_plot.png`: all significant upregulated and downregulated pathways
 - experiment-level `contrast_summary.tsv` and `run_metadata.tsv`
 
-The sample-level ssGSEA/GSVA mode remains a separate future implementation.
+Sample-level ssGSEA/GSVA remains implemented separately in the `ssgsva`
+module.

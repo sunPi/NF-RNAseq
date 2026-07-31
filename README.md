@@ -175,7 +175,8 @@ executed command, and results path.
 ### Experimental designs and contrasts
 
 Design-aware cohort modules accept a TSV or CSV file through `--design`. The
-file must contain a unique `sample` column and may contain factors and
+file must contain a unique `sample`, `sample_id`, or `SampleID` column and may
+contain factors and
 covariates such as `condition`, `batch`, and `subject`. See
 `examples/design.tsv`.
 

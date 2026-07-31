@@ -120,9 +120,12 @@ validate_design <- function(path, sample_ids) {
   if (ncol(design) < 2L) {
     stop("Design table must contain sample and group columns.", call. = FALSE)
   }
-  missing <- setdiff(sample_ids, as.character(design[[1L]]))
+  missing <- setdiff(as.character(design[[1L]]), sample_ids)
   if (length(missing)) {
-    stop("Design table is missing samples: ", paste(missing, collapse = ", "), call. = FALSE)
+    stop(
+      "Design samples are missing from the expression matrix: ",
+      paste(missing, collapse = ", "), call. = FALSE
+    )
   }
   invisible(design)
 }

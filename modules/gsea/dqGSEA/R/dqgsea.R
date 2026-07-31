@@ -1,4 +1,4 @@
-utils::globalVariables(c("pathway", "NES", "direction"))
+utils::globalVariables(c("pathway", "NES", "Direction"))
 
 #' Read a differential-expression results table
 #'
@@ -50,29 +50,44 @@ prepare_gene_ranks <- function(dge, gene_column = NULL, rank_column = "stat") {
   collapsed <- stats::aggregate(statistic, by = list(gene = gene), FUN = mean)
   ranks <- collapsed$x
   names(ranks) <- collapsed$gene
-  sort(ranks, decreasing = TRUE)
+  ranks <- sort(ranks, decreasing = TRUE)
+
+  # Preserve the deterministic tie-breaking used by the legacy dqGSEA
+  # workflow without materially changing the ranking statistic.
+  offsets <- (as.integer(factor(names(ranks))) %% 1000L) * 1e-12
+  sort(ranks + offsets, decreasing = TRUE)
 }
 
-plot_gsea <- function(results, output_path, top_n = 20L) {
+plot_gsea <- function(results, output_path, title = NULL) {
   significant <- results[!is.na(results$padj), , drop = FALSE]
   if (nrow(significant) == 0L) return(invisible(NULL))
-  significant <- significant[order(abs(significant$NES), decreasing = TRUE), , drop = FALSE]
-  significant <- utils::head(significant, top_n)
-  significant$direction <- ifelse(significant$NES >= 0, "Positive", "Negative")
-  significant$pathway <- factor(significant$pathway, levels = rev(significant$pathway))
+  significant <- significant[order(significant$NES, decreasing = TRUE), , drop = FALSE]
+  base_size <- if (nrow(significant) > 35L) 5 else 10
+  significant$Direction <- ifelse(
+    significant$NES > 0, "Upregulated", "Downregulated"
+  )
 
   plot <- ggplot2::ggplot(
     significant,
-    ggplot2::aes(x = pathway, y = NES, fill = direction)
+    ggplot2::aes(x = stats::reorder(pathway, NES), y = NES)
   ) +
-    ggplot2::geom_col(width = 0.75) +
+    ggplot2::geom_col(ggplot2::aes(fill = Direction)) +
     ggplot2::coord_flip() +
-    ggplot2::scale_fill_manual(values = c(Positive = "#077F97", Negative = "#400257")) +
-    ggplot2::labs(x = NULL, y = "Normalised enrichment score", fill = "Direction") +
-    ggprism::theme_prism()
+    ggplot2::labs(
+      x = "Pathway", y = "Normalized Enrichment Score", title = title
+    ) +
+    ggplot2::theme(
+      text = ggplot2::element_text(size = 8),
+      title = ggplot2::element_text(size = 18),
+      plot.title = ggplot2::element_text(hjust = 0.5)
+    ) +
+    ggplot2::scale_fill_manual(values = c(
+      Upregulated = "#077f97", Downregulated = "#400257"
+    )) +
+    ggprism::theme_prism(base_size = base_size)
 
-  height <- max(5, min(12, 2.5 + 0.32 * nrow(significant)))
-  ggplot2::ggsave(output_path, plot, width = 9, height = height, dpi = 300)
+  ggplot2::ggsave(output_path, plot, width = 3200 / 300,
+                  height = 1800 / 300, dpi = 300)
   invisible(plot)
 }
 
@@ -90,7 +105,8 @@ plot_gsea <- function(results, output_path, top_n = 20L) {
 #' @export
 run_dqgsea <- function(dge_path, gmt_path, output_dir = "results",
                        padj_threshold = 0.05, gene_column = NULL,
-                       rank_column = "stat", min_size = 10L, max_size = 500L) {
+                       rank_column = "stat", min_size = 10L, max_size = 500L,
+                       title = NULL) {
   if (!file.exists(gmt_path)) stop("GMT file not found: ", gmt_path, call. = FALSE)
   if (!is.numeric(padj_threshold) || length(padj_threshold) != 1L ||
       is.na(padj_threshold) || padj_threshold < 0 || padj_threshold > 1) {
@@ -113,6 +129,7 @@ run_dqgsea <- function(dge_path, gmt_path, output_dir = "results",
     row.names = FALSE
   )
 
+  set.seed(1L)
   result <- fgsea::fgseaMultilevel(
     pathways = pathways, stats = ranks,
     minSize = as.integer(min_size), maxSize = as.integer(max_size),
@@ -128,7 +145,7 @@ run_dqgsea <- function(dge_path, gmt_path, output_dir = "results",
   utils::write.csv(significant, file.path(output_dir, "gsea_significant.csv"), row.names = FALSE)
 
   if (nrow(significant) > 0L) {
-    plot_gsea(significant, file.path(output_dir, "gsea_plot.png"))
+    plot_gsea(significant, file.path(output_dir, "gsea_plot.png"), title = title)
   } else {
     message("No pathways passed the adjusted p-value threshold; plot skipped.")
   }

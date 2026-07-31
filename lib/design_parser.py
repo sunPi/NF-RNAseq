@@ -18,6 +18,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--samples-file", required=True, type=Path)
     parser.add_argument("--output-design", required=True, type=Path)
     parser.add_argument("--output-contrasts", required=True, type=Path)
+    parser.add_argument("--output-samples", type=Path)
     parser.add_argument("--contrast", action="append", default=[])
     return parser.parse_args()
 
@@ -41,24 +42,55 @@ def main() -> None:
 
     with args.design.open(newline="") as handle:
         reader = csv.DictReader(handle, delimiter=delimiter(args.design))
-        if not reader.fieldnames or "sample" not in reader.fieldnames:
-            raise ValueError("Design must contain a 'sample' column")
+        if not reader.fieldnames:
+            raise ValueError("Design has no header")
         if len(reader.fieldnames) != len(set(reader.fieldnames)):
             raise ValueError("Design contains duplicate column names")
+        sample_columns = [
+            field for field in reader.fieldnames
+            if field.lower() in {"sample", "sample_id", "sampleid"}
+        ]
+        if not sample_columns:
+            raise ValueError(
+                "Design must contain a sample identifier column "
+                "('sample', 'sample_id', or 'SampleID')"
+            )
+        if len(sample_columns) > 1:
+            raise ValueError(
+                "Design contains multiple sample identifier columns: "
+                + ", ".join(sample_columns)
+            )
+        sample_column = sample_columns[0]
         rows = list(reader)
 
-    design_samples = [row["sample"].strip() for row in rows]
+    if not rows:
+        raise ValueError("Design contains no samples")
+
+    design_samples = [row[sample_column].strip() for row in rows]
+    if any(not sample for sample in design_samples):
+        raise ValueError("Design contains an empty sample identifier")
     duplicates = sorted(name for name, count in Counter(design_samples).items() if count > 1)
     if duplicates:
         raise ValueError(f"Design contains duplicate samples: {', '.join(duplicates)}")
-    missing = [sample for sample in samples if sample not in set(design_samples)]
-    if missing:
-        raise ValueError(f"QC-included samples missing from design: {', '.join(missing)}")
+    sample_set = set(samples)
+    unknown = [sample for sample in design_samples if sample not in sample_set]
+    if unknown:
+        raise ValueError(
+            "Design samples absent from QC-included experiment samples: "
+            + ", ".join(unknown)
+        )
 
-    rows_by_sample = {row["sample"].strip(): row for row in rows}
-    normalized = [rows_by_sample[sample] for sample in samples]
+    normalized = rows
+    if sample_column != "sample":
+        normalized_fieldnames = [
+            "sample" if field == sample_column else field for field in reader.fieldnames
+        ]
+        for row in normalized:
+            row["sample"] = row.pop(sample_column)
+    else:
+        normalized_fieldnames = reader.fieldnames
     for row in normalized:
-        for field in reader.fieldnames:
+        for field in normalized_fieldnames:
             row[field] = row[field].strip()
             if not row[field]:
                 raise ValueError(
@@ -74,7 +106,7 @@ def main() -> None:
                 f"Invalid contrast '{value}'; expected FACTOR:NUMERATOR:DENOMINATOR"
             )
         factor, numerator, denominator = parts
-        if factor not in reader.fieldnames:
+        if factor not in normalized_fieldnames:
             raise ValueError(f"Contrast factor is not a design column: {factor}")
         if numerator == denominator:
             raise ValueError(f"Contrast levels must differ: {value}")
@@ -96,7 +128,7 @@ def main() -> None:
     args.output_design.parent.mkdir(parents=True, exist_ok=True)
     with args.output_design.open("w", newline="") as handle:
         writer = csv.DictWriter(
-            handle, fieldnames=reader.fieldnames, delimiter="\t", lineterminator="\n"
+            handle, fieldnames=normalized_fieldnames, delimiter="\t", lineterminator="\n"
         )
         writer.writeheader()
         writer.writerows(normalized)
@@ -104,6 +136,11 @@ def main() -> None:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(["contrast_id", "factor", "numerator", "denominator"])
         writer.writerows(parsed_contrasts)
+    if args.output_samples:
+        args.output_samples.parent.mkdir(parents=True, exist_ok=True)
+        with args.output_samples.open("w") as handle:
+            for sample in design_samples:
+                handle.write(f"{sample}\n")
 
 
 if __name__ == "__main__":

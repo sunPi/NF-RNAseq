@@ -62,13 +62,12 @@ write.table(
 )
 on.exit(unlink(temporary_expression), add = TRUE)
 
-design_path <- if ("design" %in% names(args)) args$design else NULL
 scores <- ssGSVA::run_ssgsva(
     matrix_path = temporary_expression,
     gmt_path = args$gmt,
     output_dir = args[["output-dir"]],
     method = args$method,
-    design_path = design_path,
+    design_path = NULL,
     verbose = FALSE
 )
 
@@ -99,8 +98,13 @@ if ("design" %in% names(args) && "contrasts" %in% names(args)) {
         args$contrasts, check.names = FALSE, stringsAsFactors = FALSE,
         quote = "", comment.char = ""
     )
-    design <- design[match(samples, design$sample), , drop = FALSE]
-    if (anyNA(design$sample)) fail("Validated design and score samples do not match")
+    missing_score_samples <- setdiff(design$sample, colnames(scores[[1L]]))
+    if (length(missing_score_samples)) {
+        fail(
+            "Validated design samples are missing from pathway scores: ",
+            paste(missing_score_samples, collapse = ", ")
+        )
+    }
     batch_column <- intersect(c("batch", "covariate_batch"), names(design))
     if (length(batch_column) > 1L) fail("Design must not contain both batch and covariate_batch")
 

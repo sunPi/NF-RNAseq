@@ -352,6 +352,7 @@ LOG_DIR="${QC_DIR}/logs"
 DESIGN_DIR="${RESULTS_DIR}/design"
 NORMALIZED_DESIGN=""
 CONTRASTS_FILE=""
+ANALYSIS_SAMPLES_FILE=""
 
 SELECTED_MODULES=()
 declare -A MODULE_SCOPES=()
@@ -473,11 +474,13 @@ prepare_design() {
     mkdir -p "$DESIGN_DIR"
     NORMALIZED_DESIGN="${DESIGN_DIR}/design.tsv"
     CONTRASTS_FILE="${DESIGN_DIR}/contrasts.tsv"
+    ANALYSIS_SAMPLES_FILE="${DESIGN_DIR}/analysis_samples.txt"
     design_arguments=(
         --design "$DESIGN_FILE"
         --samples-file "$included_samples_file"
         --output-design "$NORMALIZED_DESIGN"
         --output-contrasts "$CONTRASTS_FILE"
+        --output-samples "$ANALYSIS_SAMPLES_FILE"
     )
     for contrast in "${CONTRASTS[@]}"; do
         design_arguments+=(--contrast "$contrast")
@@ -485,6 +488,7 @@ prepare_design() {
     python3 "$DESIGN_VALIDATOR" "${design_arguments[@]}" ||
         die "Design or contrast validation failed"
     log_info "Validated experiment design: $NORMALIZED_DESIGN"
+    log_info "Design analysis subset: $ANALYSIS_SAMPLES_FILE"
 }
 
 load_completed_core_samples() {
@@ -832,6 +836,13 @@ fi
 if [[ "$PIPELINE_MODE" == "modules" ]]; then
     load_completed_core_samples
     prepare_design
+    if [[ ! -s "${MATRIX_DIR}/annotated/gene_counts.tsv" ]]; then
+        log_info "Canonical expression matrices are missing; rebuilding them from completed per-sample outputs"
+        bash "${SCRIPT_DIR}/lib/build_expression_matrices.sh" \
+            --results-dir "$RESULTS_DIR" \
+            --samples-file "${QC_DIR}/qc_included_samples.txt" \
+            --gene-annotation "$GENE_ANNOTATION"
+    fi
     run_selected_modules
 
     log_info "Optional modules completed successfully"
@@ -1307,7 +1318,6 @@ mapfile -t QC_INCLUDED_SAMPLES < "${QC_DIR}/qc_included_samples.txt"
 
 SAMPLES=("${QC_INCLUDED_SAMPLES[@]}")
 log_info "QC retained ${#SAMPLES[@]} sample(s) for experiment-level matrices"
-prepare_design
 
 ################################################################################
 # 9. Collect RSEM gene result files
@@ -1522,6 +1532,7 @@ MULTIQC_REPORT="${MULTIQC_DIR}/multiqc_report.html"
 
 if [[ "$PIPELINE_MODE" == "optional" ]]; then
     load_current_core_samples
+    prepare_design
     run_selected_modules
 fi
 
