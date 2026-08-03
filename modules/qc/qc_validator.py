@@ -140,6 +140,14 @@ def read_rsem(path):
     }
 
 
+def read_rrna(path):
+    with open(path, encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle, delimiter="\t"))
+    if len(rows) != 1:
+        raise ValueError("Expected one rRNA metrics row in: {}".format(path))
+    return {"rrna_rate": float(rows[0]["rrna_percent"])}
+
+
 def metric_definitions(config):
     return {
         "total_reads": ("Sequencing", "min", number(config, "MIN_TOTAL_READS_PASS"), number(config, "MIN_TOTAL_READS_WARNING"), "reads"),
@@ -147,6 +155,7 @@ def metric_definitions(config):
         "trim_retention": ("Sequencing", "min", number(config, "MIN_TRIM_RETENTION_PASS"), number(config, "MIN_TRIM_RETENTION_WARNING"), "%"),
         "adapter_contamination": ("Sequencing", "max", number(config, "MAX_ADAPTER_CONTAMINATION_PASS"), number(config, "MAX_ADAPTER_CONTAMINATION_WARNING"), "%"),
         "n_bases": ("Sequencing", "max", number(config, "MAX_N_BASES_PASS"), number(config, "MAX_N_BASES_WARNING"), "%"),
+        "rrna_rate": ("Contamination", "max", number(config, "MAX_RRNA_RATE_PASS"), number(config, "MAX_RRNA_RATE_WARNING"), "%"),
         "unique_mapping": ("Alignment", "min", number(config, "MIN_UNIQUE_MAPPING_PASS"), number(config, "MIN_UNIQUE_MAPPING_WARNING"), "%"),
         "multi_mapping": ("Alignment", "max", number(config, "MAX_MULTI_MAPPING_PASS"), number(config, "MAX_MULTI_MAPPING_WARNING"), "%"),
         "unmapped": ("Alignment", "max", number(config, "MAX_UNMAPPED_PASS"), number(config, "MAX_UNMAPPED_WARNING"), "%"),
@@ -194,6 +203,8 @@ def main():
         metrics.update(read_fastp(row["fastp_json"]))
         metrics.update(read_star(row["star_log"]))
         metrics.update(read_rsem(row["rsem_genes"]))
+        if row.get("rrna_metrics"):
+            metrics.update(read_rrna(row["rrna_metrics"]))
 
         statuses = {}
         for metric, value in metrics.items():
@@ -249,7 +260,7 @@ def main():
         report_path = os.path.join(args.output_dir, "{}.qc_report.txt".format(sample))
         with open(report_path, "w", encoding="utf-8") as report:
             report.write("Sample: {}\n\n".format(sample))
-            for category in ("Sequencing", "Alignment", "Expression"):
+            for category in ("Sequencing", "Contamination", "Alignment", "Expression"):
                 report.write("{}\n{}\n".format(category, "-" * 25))
                 for metric, definition in definitions.items():
                     if definition[0] != category:

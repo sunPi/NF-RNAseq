@@ -122,6 +122,10 @@
           "type": "string",
           "minLength": 1
         },
+        "upstream_repository": {
+          "type": "string",
+          "format": "uri"
+        },
         "requires_design": {
           "type": "boolean"
         },

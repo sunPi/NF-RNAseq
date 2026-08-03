@@ -1,6 +1,6 @@
 {
   "$schema": "./module_inventory.schema.json",
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "description": "Mutable inventory of implemented and planned NF-RNAseq biological analysis modules. Core pipeline infrastructure such as the design parser is intentionally excluded.",
   "modules": [
     {
@@ -569,6 +569,98 @@
       ],
       "tools": [
         "TRUST4"
+      ]
+    },
+    {
+      "id": "tetranscripts",
+      "category": "fastq_bam",
+      "execution_scope": "hybrid",
+      "status": "planned",
+      "summary": "Quantify gene and transposable-element family expression from RNA-seq alignments and optionally test differential TE expression.",
+      "upstream_repository": "https://github.com/mhammell-laboratory/TEtranscripts",
+      "requires_design": false,
+      "requires_contrast": false,
+      "supports_layout": [
+        "single",
+        "paired"
+      ],
+      "inputs": [
+        {
+          "name": "multimapping-aware genomic BAM files",
+          "required": true
+        },
+        {
+          "name": "assembly-specific gene GTF",
+          "required": true
+        },
+        {
+          "name": "assembly-specific transposable-element annotation",
+          "required": true
+        }
+      ],
+      "outputs": [
+        "per-sample gene and TE-family counts",
+        "cohort TE-family count matrix",
+        "differential TE-expression tables when a design and contrast are supplied"
+      ],
+      "modes": [
+        {
+          "name": "quantification",
+          "description": "Generate sample and cohort gene/TE-family count matrices.",
+          "requires_design": false,
+          "requires_contrast": false
+        },
+        {
+          "name": "differential_expression",
+          "description": "Compare TE-family abundance between design groups.",
+          "requires_design": true,
+          "requires_contrast": true,
+          "depends_on": [
+            "quantification"
+          ]
+        }
+      ],
+      "tools": [
+        "TEtranscripts"
+      ],
+      "notes": [
+        "The future implementation must preserve multimapping reads required for TE quantification."
+      ]
+    },
+    {
+      "id": "telescope",
+      "category": "fastq_bam",
+      "execution_scope": "hybrid",
+      "status": "planned",
+      "summary": "Resolve multimapping RNA-seq reads to specific transposable-element loci and aggregate locus-level TE expression across the cohort.",
+      "upstream_repository": "https://github.com/mlbendall/telescope",
+      "requires_design": false,
+      "requires_contrast": false,
+      "supports_layout": [
+        "single",
+        "paired"
+      ],
+      "inputs": [
+        {
+          "name": "multimapping-aware genomic BAM files",
+          "required": true
+        },
+        {
+          "name": "assembly-specific Telescope TE annotation",
+          "required": true
+        }
+      ],
+      "outputs": [
+        "per-sample locus-level TE abundance",
+        "read-assignment statistics",
+        "cohort locus-level TE expression matrix"
+      ],
+      "tools": [
+        "Telescope"
+      ],
+      "notes": [
+        "Telescope complements TEtranscripts by resolving expression at individual TE loci rather than primarily at TE-family level.",
+        "The future implementation must define a shared multimapping-aware alignment contract for both TE modules."
       ]
     },
     {

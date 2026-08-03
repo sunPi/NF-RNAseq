@@ -295,6 +295,12 @@ DESIGN_VALIDATOR="${SCRIPT_DIR}/lib/design_parser.py"
 # shellcheck disable=SC1090
 source "$CONFIG_FILE"
 
+# Older generated configurations predate the rRNA core phase. Keep those
+# installations runnable while making new installations opt in by default.
+INSTALL_RRNA="${INSTALL_RRNA:-false}"
+RRNA_FASTA="${RRNA_FASTA:-}"
+RRNA_BOWTIE2_PREFIX="${RRNA_BOWTIE2_PREFIX:-}"
+
 declare -F select_reference_assembly >/dev/null ||
     die "Configuration does not define select_reference_assembly: $CONFIG_FILE"
 
@@ -524,12 +530,19 @@ load_completed_core_samples() {
             die "Invalid sample identifier in $included_samples_file: $sample"
 
         if [[ "$READ_LAYOUT" == "paired" ]]; then
-            trimmed_r1="${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed_R1.fastq.gz"
-            trimmed_r2="${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed_R2.fastq.gz"
+            trimmed_r1="${RESULTS_DIR}/${sample}/rrna/${sample}_non_rRNA_R1.fastq.gz"
+            trimmed_r2="${RESULTS_DIR}/${sample}/rrna/${sample}_non_rRNA_R2.fastq.gz"
+            if [[ ! -s "$trimmed_r1" || ! -s "$trimmed_r2" ]]; then
+                trimmed_r1="${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed_R1.fastq.gz"
+                trimmed_r2="${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed_R2.fastq.gz"
+            fi
             [[ -s "$trimmed_r2" ]] ||
                 die "Prior core R2 output is missing for $sample: $trimmed_r2"
         else
-            trimmed_r1="${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed.fastq.gz"
+            trimmed_r1="${RESULTS_DIR}/${sample}/rrna/${sample}_non_rRNA.fastq.gz"
+            if [[ ! -s "$trimmed_r1" ]]; then
+                trimmed_r1="${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed.fastq.gz"
+            fi
             trimmed_r2=""
         fi
 
@@ -549,10 +562,20 @@ load_current_core_samples() {
 
     for sample in "${SAMPLES[@]}"; do
         if [[ "$READ_LAYOUT" == "paired" ]]; then
-            R1_PATHS+=("${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed_R1.fastq.gz")
-            R2_PATHS+=("${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed_R2.fastq.gz")
+            if [[ -s "${RESULTS_DIR}/${sample}/rrna/${sample}_non_rRNA_R1.fastq.gz" &&
+                  -s "${RESULTS_DIR}/${sample}/rrna/${sample}_non_rRNA_R2.fastq.gz" ]]; then
+                R1_PATHS+=("${RESULTS_DIR}/${sample}/rrna/${sample}_non_rRNA_R1.fastq.gz")
+                R2_PATHS+=("${RESULTS_DIR}/${sample}/rrna/${sample}_non_rRNA_R2.fastq.gz")
+            else
+                R1_PATHS+=("${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed_R1.fastq.gz")
+                R2_PATHS+=("${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed_R2.fastq.gz")
+            fi
         else
-            R1_PATHS+=("${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed.fastq.gz")
+            if [[ -s "${RESULTS_DIR}/${sample}/rrna/${sample}_non_rRNA.fastq.gz" ]]; then
+                R1_PATHS+=("${RESULTS_DIR}/${sample}/rrna/${sample}_non_rRNA.fastq.gz")
+            else
+                R1_PATHS+=("${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed.fastq.gz")
+            fi
             R2_PATHS+=("")
         fi
     done
@@ -768,6 +791,10 @@ fi
 if [[ "${CONDA_DEFAULT_ENV:-}" != "$CONDA_ENV" ]]; then
     die "Conda environment '$CONDA_ENV' is not active. Run: conda activate $CONDA_ENV"
 fi
+[[ -n "${CONDA_PREFIX:-}" && -d "$CONDA_PREFIX/bin" ]] ||
+    die "Active Conda environment has no executable directory: ${CONDA_PREFIX:-unset}/bin"
+export PATH="$CONDA_PREFIX/bin:$PATH"
+hash -r
 
 if [[ "$PIPELINE_MODE" != "modules" ]]; then
     log_info "Validating core software dependencies"
@@ -784,10 +811,28 @@ if [[ "$PIPELINE_MODE" != "modules" ]]; then
         Rscript
     )
 
+    if [[ "$INSTALL_RRNA" == true ]]; then
+        REQUIRED_COMMANDS+=(bowtie2)
+    fi
+
     for command_name in "${REQUIRED_COMMANDS[@]}"; do
         command -v "$command_name" >/dev/null 2>&1 ||
             die "Required command not found in PATH: $command_name"
     done
+fi
+
+if [[ "$PIPELINE_MODE" != "modules" && "$INSTALL_RRNA" == true ]]; then
+    [[ -s "$RRNA_FASTA" ]] ||
+        die "rRNA filtering is enabled but the SILVA FASTA is missing: $RRNA_FASTA"
+    rrna_index_found=false
+    for rrna_index_file in "${RRNA_BOWTIE2_PREFIX}".*.bt2 "${RRNA_BOWTIE2_PREFIX}".*.bt2l; do
+        if [[ -s "$rrna_index_file" ]]; then
+            rrna_index_found=true
+            break
+        fi
+    done
+    [[ "$rrna_index_found" == true ]] ||
+        die "rRNA filtering is enabled but the Bowtie2 index is missing: $RRNA_BOWTIE2_PREFIX"
 fi
 
 log_info "Validating reference installation for $ASSEMBLY"
@@ -1057,6 +1102,11 @@ done
 # 7. Process each sample
 ################################################################################
 
+CORE_READ_MANIFEST="${QC_DIR}/core_read_manifest.tsv"
+RRNA_SUMMARY="${QC_DIR}/rRNA_summary.tsv"
+printf 'sample\tread1\tread2\trrna_filtered\n' > "$CORE_READ_MANIFEST"
+printf 'sample\tinput_fragments\tretained_fragments\trrna_fragments\trrna_percent\n' > "$RRNA_SUMMARY"
+
 for index in "${!SAMPLES[@]}"; do
     sample="${SAMPLES[$index]}"
     raw_r1="${R1_PATHS[$index]}"
@@ -1073,6 +1123,7 @@ for index in "${!SAMPLES[@]}"; do
     sample_fastqc_raw_dir="${sample_results_dir}/fastqc/raw"
     sample_fastqc_trimmed_dir="${sample_results_dir}/fastqc/trimmed"
     sample_fastp_dir="${sample_results_dir}/fastp"
+    sample_rrna_dir="${sample_results_dir}/rrna"
     sample_star_dir="${sample_results_dir}/star"
     sample_rsem_dir="${sample_results_dir}/rsem"
     sample_featurecounts_dir="${sample_results_dir}/featurecounts"
@@ -1082,6 +1133,7 @@ for index in "${!SAMPLES[@]}"; do
         "$sample_fastqc_raw_dir" \
         "$sample_fastqc_trimmed_dir" \
         "$sample_fastp_dir" \
+        "$sample_rrna_dir" \
         "$sample_star_dir" \
         "$sample_rsem_dir" \
         "$sample_featurecounts_dir" \
@@ -1162,8 +1214,69 @@ for index in "${!SAMPLES[@]}"; do
         trimmed_reads+=("$trimmed_r2")
     fi
 
+    analysis_r1="$trimmed_r1"
+    analysis_r2="$trimmed_r2"
+    rrna_filtered=false
+    rrna_metrics=""
+
     ########################################################################
-    # 7.3 Trimmed FASTQ quality control
+    # 7.3 SILVA rRNA depletion (optional core phase)
+    ########################################################################
+
+    if [[ "$INSTALL_RRNA" == true ]]; then
+        log_info "Filtering SILVA rRNA reads: $sample"
+        rrna_metrics="${sample_rrna_dir}/${sample}.rRNA_metrics.tsv"
+        if [[ "$READ_LAYOUT" == "paired" ]]; then
+            analysis_r1="${sample_rrna_dir}/${sample}_non_rRNA_R1.fastq.gz"
+            analysis_r2="${sample_rrna_dir}/${sample}_non_rRNA_R2.fastq.gz"
+            rrna_output="${sample_rrna_dir}/${sample}_non_rRNA_R%.fastq.gz"
+            rrna_input_arguments=(-1 "$trimmed_r1" -2 "$trimmed_r2" --un-conc-gz "$rrna_output")
+        else
+            analysis_r1="${sample_rrna_dir}/${sample}_non_rRNA.fastq.gz"
+            analysis_r2=""
+            rrna_input_arguments=(-U "$trimmed_r1" --un-gz "$analysis_r1")
+        fi
+
+        begin_timed_step "$sample" "rrna_filter"
+        bowtie2 \
+            --very-sensitive \
+            --threads "$THREADS" \
+            -x "$RRNA_BOWTIE2_PREFIX" \
+            "${rrna_input_arguments[@]}" \
+            -S /dev/null \
+            > "${sample_log_dir}/rRNA.stdout.log" \
+            2> "${sample_log_dir}/rRNA.stderr.log"
+        finish_timed_step "success"
+
+        [[ -s "$analysis_r1" ]] ||
+            die "rRNA depletion produced no retained R1 reads for sample: $sample"
+        if [[ "$READ_LAYOUT" == "paired" ]]; then
+            [[ -s "$analysis_r2" ]] ||
+                die "rRNA depletion produced no retained R2 reads for sample: $sample"
+        fi
+
+        input_fragments="$(gzip -dc -- "$trimmed_r1" | awk 'END {print NR / 4}')"
+        retained_fragments="$(gzip -dc -- "$analysis_r1" | awk 'END {print NR / 4}')"
+        rrna_fragments=$((input_fragments - retained_fragments))
+        rrna_percent="$(awk -v removed="$rrna_fragments" -v total="$input_fragments" 'BEGIN {printf "%.6f", total ? removed * 100 / total : 0}')"
+        printf 'sample\tinput_fragments\tretained_fragments\trrna_fragments\trrna_percent\n%s\t%s\t%s\t%s\t%s\n' \
+            "$sample" "$input_fragments" "$retained_fragments" "$rrna_fragments" "$rrna_percent" \
+            > "$rrna_metrics"
+        printf '%s\t%s\t%s\t%s\t%s\n' \
+            "$sample" "$input_fragments" "$retained_fragments" "$rrna_fragments" "$rrna_percent" \
+            >> "$RRNA_SUMMARY"
+        rrna_filtered=true
+    fi
+
+    analysis_reads=("$analysis_r1")
+    if [[ "$READ_LAYOUT" == "paired" ]]; then
+        analysis_reads+=("$analysis_r2")
+    fi
+    printf '%s\t%s\t%s\t%s\n' "$sample" "$analysis_r1" "$analysis_r2" "$rrna_filtered" \
+        >> "$CORE_READ_MANIFEST"
+
+    ########################################################################
+    # 7.4 Analysis FASTQ quality control
     ########################################################################
 
     log_info "Running trimmed FastQC: $sample"
@@ -1172,13 +1285,13 @@ for index in "${!SAMPLES[@]}"; do
     fastqc \
         --threads "$THREADS" \
         --outdir "$sample_fastqc_trimmed_dir" \
-        "${trimmed_reads[@]}" \
+        "${analysis_reads[@]}" \
         > "${sample_log_dir}/FastQC.trimmed.stdout.log" \
         2> "${sample_log_dir}/FastQC.trimmed.stderr.log"
     finish_timed_step "success"
 
     ########################################################################
-    # 7.4 STAR alignment
+    # 7.5 STAR alignment
     ########################################################################
 
     log_info "Running STAR: $sample"
@@ -1187,7 +1300,7 @@ for index in "${!SAMPLES[@]}"; do
     STAR \
         --runThreadN "$THREADS" \
         --genomeDir "$STAR_INDEX" \
-        --readFilesIn "${trimmed_reads[@]}" \
+        --readFilesIn "${analysis_reads[@]}" \
         --readFilesCommand zcat \
         --outFileNamePrefix "$star_prefix" \
         --outSAMtype BAM SortedByCoordinate \
@@ -1289,14 +1402,17 @@ done
 ################################################################################
 
 QC_MANIFEST="${LOG_DIR}/qc_input_manifest.tsv"
-printf 'sample\tfastp_json\tstar_log\trsem_genes\n' > "$QC_MANIFEST"
+printf 'sample\tfastp_json\tstar_log\trsem_genes\trrna_metrics\n' > "$QC_MANIFEST"
 
 for sample in "${SAMPLES[@]}"; do
-    printf '%s\t%s\t%s\t%s\n' \
+    rrna_metrics="${RESULTS_DIR}/${sample}/rrna/${sample}.rRNA_metrics.tsv"
+    [[ -s "$rrna_metrics" ]] || rrna_metrics=""
+    printf '%s\t%s\t%s\t%s\t%s\n' \
         "$sample" \
         "${RESULTS_DIR}/${sample}/fastp/${sample}.fastp.json" \
         "${RESULTS_DIR}/${sample}/star/${sample}.Log.final.out" \
         "${RESULTS_DIR}/${sample}/rsem/${sample}.genes.results" \
+        "$rrna_metrics" \
         >> "$QC_MANIFEST"
 done
 

@@ -11,12 +11,20 @@ conda install --name "$CONDA_ENV" --channel conda-forge --channel bioconda --yes
   bioconductor-decoupler bioconductor-limma bioconductor-omnipathr \
   r-ggplot2 r-ggprism r-matrix
 mkdir -p "$MODULE_DB_ROOT/networks" "$MODULE_DB_ROOT/config"
-curl --fail --location --retry 3 \
-  'https://omnipathdb.org/interactions?datasets=collectri&organisms=9606&format=tsv&genesymbols=1' \
-  --output "$MODULE_DB_ROOT/networks/collectri_human.tsv"
-curl --fail --location --retry 3 \
-  'https://omnipathdb.org/annotations?resources=PROGENy&format=tsv' \
-  --output "$MODULE_DB_ROOT/networks/progeny_human.tsv"
+COLLECTRI_TSV="$MODULE_DB_ROOT/networks/collectri_human.tsv"
+PROGENY_TSV="$MODULE_DB_ROOT/networks/progeny_human.tsv"
+if [[ ! -s "$COLLECTRI_TSV" ]]; then
+  curl --fail --location --retry 3 --continue-at - \
+    'https://omnipathdb.org/interactions?datasets=collectri&organisms=9606&format=tsv&genesymbols=1' \
+    --output "${COLLECTRI_TSV}.partial"
+  mv -- "${COLLECTRI_TSV}.partial" "$COLLECTRI_TSV"
+fi
+if [[ ! -s "$PROGENY_TSV" ]]; then
+  curl --fail --location --retry 3 --continue-at - \
+    'https://omnipathdb.org/annotations?resources=PROGENy&format=tsv' \
+    --output "${PROGENY_TSV}.partial"
+  mv -- "${PROGENY_TSV}.partial" "$PROGENY_TSV"
+fi
 conda run --name "$CONDA_ENV" Rscript -e '
   args <- commandArgs(TRUE)
   c <- read.delim(args[1], check.names=FALSE)
@@ -37,9 +45,9 @@ conda run --name "$CONDA_ENV" Rscript -e '
   p <- p[order(p$source,p$target,p$p_value),]
   p <- p[!duplicated(p[c("source","target")]),]
   saveRDS(p,args[4])
-' "$MODULE_DB_ROOT/networks/collectri_human.tsv" \
+' "$COLLECTRI_TSV" \
   "$MODULE_DB_ROOT/networks/collectri_human.rds" \
-  "$MODULE_DB_ROOT/networks/progeny_human.tsv" \
+  "$PROGENY_TSV" \
   "$MODULE_DB_ROOT/networks/progeny_human_top500.rds"
 cat > "$MODULE_DB_ROOT/config/${ASSEMBLY}.config" <<EOF
 DECOUPLER_CONDA_ENV='$CONDA_ENV'

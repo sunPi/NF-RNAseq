@@ -9,13 +9,14 @@ The Core Module 1.0 workflow performs:
 
 1. Raw-read quality control with FastQC
 2. Adapter trimming and filtering with fastp
-3. Quality control of trimmed reads
-4. Alignment with STAR
-5. BAM indexing with Samtools
-6. Gene and transcript quantification with RSEM
-7. Sample-level quality assessment
-8. Generation of expected-count, TPM, and FPKM matrices
-9. Aggregated reporting with MultiQC
+3. Optional SILVA rRNA depletion with Bowtie2
+4. Quality control of the reads used for alignment
+5. Alignment with STAR
+6. BAM indexing with Samtools
+7. Gene and transcript quantification with RSEM
+8. Sample-level quality assessment
+9. Generation of expected-count, TPM, and FPKM matrices
+10. Aggregated reporting with MultiQC
 
 Workflow overview:
 
@@ -23,6 +24,7 @@ Workflow overview:
 FASTQ
   * FastQC
   * fastp
+  * SILVA/Bowtie2 rRNA depletion (when installed)
   * FastQC
   * STAR
   * Samtools
@@ -85,7 +87,15 @@ Install
 ```
 
 Install GRCh38:
-./install_pipe.sh --assembly GRCh38 --threads 16
+./install_pipe.sh --assembly GRCh38 --threads 16 --skip-rrna
+
+Install every currently implemented GRCh38 module after the core installation:
+./install_pipe.sh --assembly GRCh38 --add-modules all --threads 16
+
+Validate the completed core and module installations without downloading or
+rebuilding resources:
+./install_pipe.sh --assembly GRCh38 --skip-rrna --validate-only
+./install_pipe.sh --assembly GRCh38 --add-modules all --validate-only
 
 Install GRCh37/hg19:
 ./install_pipe.sh --assembly hg19 --threads 16
@@ -93,9 +103,12 @@ Install GRCh37/hg19:
 Install both assemblies:
 ./install_pipe.sh --with-hg19 --threads 16
 
-The installer creates the nf-env Conda environment, restores R packages
-from renv.lock, downloads reference resources, constructs the STAR and RSEM
-indices, and generates the local config/main.config.
+The installer creates the nf-env Conda environment with R 4.3.3 and an
+isolated nf-vep-env for VEP 116, restores R packages from renv.lock, downloads
+reference resources, constructs the STAR and RSEM
+indices, and generates the local config/main.config. Core and optional-module
+installation are intentionally separate resumable phases. Installation state
+is recorded in db/install_manifest.tsv.
 
 Activate the environment:
 conda activate nf-env
@@ -154,6 +167,8 @@ Results are written below:
 
 The main outputs include:
  - Per-sample FastQC and fastp reports
+ - Optional pair-preserving SILVA rRNA depletion under `SAMPLE/rrna/`
+ - Cohort rRNA removal metrics in `QC/rRNA_summary.tsv`
  - STAR alignments
  - RSEM gene and isoform results
  - Sample QC classifications
@@ -202,8 +217,8 @@ The core expression utilities include `lib/handle_gene_dups.R`, which resolves
 duplicate gene symbols using the highest-expression locus by default after annotation.
 Canonical Ensembl-ID count matrices are retained unchanged.
 
-The fusion, isoform-aggregation, DGE, ranked GSEA, and sample-level ssGSVA
-modules are currently available.
+The fusion, isoform-aggregation, DGE, ranked GSEA, sample-level ssGSVA, GO,
+decoupleR, HyTEsum, and SarSig modules are currently available.
 Install the required module before selecting it at runtime:
 
 ```
@@ -212,9 +227,11 @@ Install the required module before selecting it at runtime:
 ./install_pipe.sh --add-modules dge --assembly GRCh38
 ./install_pipe.sh --add-modules gsea --assembly GRCh38
 ./install_pipe.sh --add-modules ssgsva --assembly GRCh38
+./install_pipe.sh --add-modules go,decoupler,hytesum,sarsig --assembly GRCh38
+./install_pipe.sh --add-modules all --assembly GRCh38
 ```
 
-The module runs STAR-Fusion and Arriba using the trimmed FASTQ files produced
+The module runs STAR-Fusion and Arriba using the core analysis FASTQ files produced
 by the core pipeline. Module outputs are written below:
 
 ```
