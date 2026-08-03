@@ -182,6 +182,32 @@ The main outputs include:
 
 ```
 
+### SLURM execution
+
+Copy and edit the example scheduler profile once for the target cluster:
+
+```bash
+cp config/slurm.config.example config/slurm.config
+```
+
+Preview the jobs without submitting them:
+
+```bash
+./main.sh \
+  --assembly GRCh38 \
+  --layout paired \
+  --experiment study_01 \
+  --input /shared/fastq/study_01 \
+  --pipeline core \
+  --executor slurm \
+  --dry-run
+```
+
+Remove `--dry-run` to submit a per-sample job array followed by an `afterok`
+cohort job. Add `--resume` when resubmitting to skip samples that already have
+a successful core completion marker. See `docs/slurm_execution.md` for profile,
+logging, dependency, and restart details.
+
 Every invocation is appended to `results/<experiment>/project_info.tsv`.
 The ledger records the analysis mode and modules, assembly, read layout,
 input path, samples, timing, success or failure status, code revision,

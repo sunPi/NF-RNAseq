@@ -51,7 +51,8 @@ Usage:
   $(basename "$0") --assembly <ASSEMBLY> --layout <single|paired> \\
     --experiment <PATH> --input <DIRECTORY> [--pipeline core|optional] \\
     [--modules all|MODULE[,MODULE...]] [--design FILE] \\
-    [--contrast FACTOR:NUMERATOR:DENOMINATOR]
+    [--contrast FACTOR:NUMERATOR:DENOMINATOR] \\
+    [--executor local|slurm] [--slurm-profile FILE] [--resume] [--dry-run]
 
   $(basename "$0") --assembly <ASSEMBLY> --layout <single|paired> \\
     --experiment <PATH> --pipeline modules \\
@@ -69,6 +70,10 @@ Options:
   -m, --modules VALUE    all or a comma-separated optional-module list
   -d, --design FILE      Sample metadata TSV/CSV with a required sample column
   -c, --contrast VALUE   FACTOR:NUMERATOR:DENOMINATOR; may be repeated
+      --executor NAME    Execution backend: local (default) or slurm
+      --slurm-profile F  SLURM resource configuration file
+      --resume           Skip samples with a core completion marker
+      --dry-run          Print SLURM submissions without calling sbatch
 
   -h, --help            Show this help message.
 
@@ -104,6 +109,12 @@ PIPELINE_MODE="core"
 MODULES_REQUESTED=""
 DESIGN_FILE=""
 CONTRASTS=()
+EXECUTOR="local"
+SLURM_PROFILE=""
+DRY_RUN=false
+RESUME=false
+INTERNAL_STAGE="all"
+SAMPLE_INDEX=""
 
 while (( $# > 0 )); do
     case "$1" in
@@ -209,6 +220,51 @@ while (( $# > 0 )); do
             shift
             ;;
 
+        --executor)
+            [[ $# -ge 2 ]] || die "Missing value after $1"
+            EXECUTOR="${2,,}"
+            shift 2
+            ;;
+
+        --executor=*)
+            EXECUTOR="${1#*=}"
+            EXECUTOR="${EXECUTOR,,}"
+            shift
+            ;;
+
+        --slurm-profile)
+            [[ $# -ge 2 ]] || die "Missing value after $1"
+            SLURM_PROFILE="$2"
+            shift 2
+            ;;
+
+        --slurm-profile=*)
+            SLURM_PROFILE="${1#*=}"
+            shift
+            ;;
+
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+
+        --resume)
+            RESUME=true
+            shift
+            ;;
+
+        --internal-stage)
+            [[ $# -ge 2 ]] || die "Missing value after $1"
+            INTERNAL_STAGE="$2"
+            shift 2
+            ;;
+
+        --sample-index)
+            [[ $# -ge 2 ]] || die "Missing value after $1"
+            SAMPLE_INDEX="$2"
+            shift 2
+            ;;
+
         -h|--help)
             usage
             exit 0
@@ -219,6 +275,19 @@ while (( $# > 0 )); do
             ;;
     esac
 done
+
+[[ "$EXECUTOR" == "local" || "$EXECUTOR" == "slurm" ]] ||
+    die "Invalid executor '$EXECUTOR'. Use local or slurm"
+[[ "$INTERNAL_STAGE" == "all" || "$INTERNAL_STAGE" == "core-sample" ||
+   "$INTERNAL_STAGE" == "cohort" ]] ||
+    die "Invalid internal execution stage: $INTERNAL_STAGE"
+if [[ "$INTERNAL_STAGE" == "core-sample" ]]; then
+    [[ "$SAMPLE_INDEX" =~ ^[0-9]+$ ]] ||
+        die "The core-sample stage requires a non-negative --sample-index"
+fi
+if [[ "$EXECUTOR" == "slurm" && "$INTERNAL_STAGE" != "all" ]]; then
+    die "Internal stages must execute with the local backend"
+fi
 
 (( ${#CONTRASTS[@]} == 0 )) || [[ -n "$DESIGN_FILE" ]] ||
     die "--contrast requires --design"
@@ -294,6 +363,13 @@ DESIGN_VALIDATOR="${SCRIPT_DIR}/lib/design_parser.py"
 
 # shellcheck disable=SC1090
 source "$CONFIG_FILE"
+
+# SLURM exports the allocation size to each job. Using it here keeps tool
+# thread counts within the CPU allocation while retaining the installed
+# THREADS value for local runs.
+if [[ -n "${SLURM_CPUS_PER_TASK:-}" ]]; then
+    THREADS="$SLURM_CPUS_PER_TASK"
+fi
 
 # Older generated configurations predate the rRNA core phase. Keep those
 # installations runnable while making new installations opt in by default.
@@ -717,6 +793,7 @@ record_project_run() {
     local sample_count=0
     local sample_names="-"
 
+    [[ "$INTERNAL_STAGE" != "core-sample" ]] || return 0
     (( RUN_RECORDED == 0 )) || return 0
     RUN_RECORDED=1
 
@@ -878,7 +955,72 @@ if [[ "$PIPELINE_MODE" == "optional" || "$PIPELINE_MODE" == "modules" ]]; then
     resolve_selected_modules "$MODULES_REQUESTED"
 fi
 
+submit_modules_slurm() {
+    local profile="$SLURM_PROFILE"
+    local job_id
+    local contrast
+    local -a options=()
+    local -a job_arguments=(
+        --assembly "$ASSEMBLY_REQUESTED"
+        --layout "$READ_LAYOUT"
+        --experiment "$EXPERIMENT_NAME"
+        --pipeline modules
+        --modules "$MODULES_REQUESTED"
+        --executor local
+    )
+
+    [[ -z "$DESIGN_FILE" ]] || job_arguments+=(--design "$DESIGN_FILE")
+    for contrast in "${CONTRASTS[@]}"; do
+        job_arguments+=(--contrast "$contrast")
+    done
+    [[ -n "$profile" ]] || profile="${SCRIPT_DIR}/config/slurm.config"
+    [[ "$profile" == /* ]] || profile="${ROOT_DIR}/${profile}"
+    [[ -f "$profile" ]] ||
+        die "SLURM profile not found: $profile (copy config/slurm.config.example)"
+    # shellcheck disable=SC1090
+    source "$profile"
+    : "${SLURM_COHORT_CPUS:?SLURM_COHORT_CPUS is required}"
+    : "${SLURM_COHORT_MEMORY:?SLURM_COHORT_MEMORY is required}"
+    : "${SLURM_COHORT_TIME:?SLURM_COHORT_TIME is required}"
+    [[ -z "${SLURM_PARTITION:-}" ]] || options+=(--partition "$SLURM_PARTITION")
+    [[ -z "${SLURM_ACCOUNT:-}" ]] || options+=(--account "$SLURM_ACCOUNT")
+    [[ -z "${SLURM_QOS:-}" ]] || options+=(--qos "$SLURM_QOS")
+    if declare -p SLURM_EXTRA_ARGS >/dev/null 2>&1; then
+        options+=("${SLURM_EXTRA_ARGS[@]}")
+    fi
+    mkdir -p "${LOG_DIR}/slurm"
+
+    if [[ "$DRY_RUN" == true ]]; then
+        printf '[DRY-RUN] '
+        printf '%q ' sbatch --parsable "${options[@]}" \
+            --job-name "nfrna-modules-${EXPERIMENT_NAME//\//-}" \
+            --cpus-per-task "$SLURM_COHORT_CPUS" --mem "$SLURM_COHORT_MEMORY" \
+            --time "$SLURM_COHORT_TIME" --chdir "$ROOT_DIR" \
+            --output "${LOG_DIR}/slurm/modules-%j.out" \
+            --error "${LOG_DIR}/slurm/modules-%j.err" \
+            "${SCRIPT_DIR}/slurm/run_stage.sh" "$profile" "${job_arguments[@]}"
+        printf '\n'
+        job_id="DRYRUN_MODULES"
+    else
+        command -v sbatch >/dev/null 2>&1 || die "sbatch is not available"
+        job_id="$(sbatch --parsable "${options[@]}" \
+            --job-name "nfrna-modules-${EXPERIMENT_NAME//\//-}" \
+            --cpus-per-task "$SLURM_COHORT_CPUS" --mem "$SLURM_COHORT_MEMORY" \
+            --time "$SLURM_COHORT_TIME" --chdir "$ROOT_DIR" \
+            --output "${LOG_DIR}/slurm/modules-%j.out" \
+            --error "${LOG_DIR}/slurm/modules-%j.err" \
+            "${SCRIPT_DIR}/slurm/run_stage.sh" "$profile" "${job_arguments[@]}")"
+    fi
+    printf 'modules\t%s\n' "$job_id" > "${LOG_DIR}/slurm/submitted_jobs.tsv"
+    log_info "Modules job: $job_id"
+}
+
 if [[ "$PIPELINE_MODE" == "modules" ]]; then
+    if [[ "$EXECUTOR" == "slurm" ]]; then
+        submit_modules_slurm
+        log_info "SLURM modules workflow submitted; results will complete asynchronously"
+        exit 0
+    fi
     load_completed_core_samples
     prepare_design
     if [[ ! -s "${MATRIX_DIR}/annotated/gene_counts.tsv" ]]; then
@@ -906,7 +1048,12 @@ mkdir -p \
     "$MULTIQC_DIR" \
     "$LOG_DIR"
 
-TIMING_FILE="${LOG_DIR}/sample_step_timings.tsv"
+if [[ "$INTERNAL_STAGE" == "core-sample" ]]; then
+    mkdir -p "${LOG_DIR}/sample_timings"
+    TIMING_FILE="${LOG_DIR}/sample_timings/${SAMPLE_INDEX}.tsv"
+else
+    TIMING_FILE="${LOG_DIR}/sample_step_timings.tsv"
+fi
 printf 'experiment\tsample\tstep\tstart_utc\tend_utc\tduration_seconds\tstatus\n' \
     > "$TIMING_FILE"
 
@@ -1098,20 +1245,198 @@ for index in "${!SAMPLES[@]}"; do
     fi
 done
 
+write_sample_manifest() {
+    local manifest="$1"
+    local temporary_manifest="${manifest}.tmp.$$"
+    local index
+
+    printf 'array_index\tsample\tread1\tread2\n' > "$temporary_manifest"
+    for index in "${!SAMPLES[@]}"; do
+        printf '%s\t%s\t%s\t%s\n' \
+            "$index" "${SAMPLES[$index]}" "${R1_PATHS[$index]}" "${R2_PATHS[$index]}" \
+            >> "$temporary_manifest"
+    done
+    mv -f -- "$temporary_manifest" "$manifest"
+}
+
+validate_sample_manifest() {
+    local manifest="$1"
+    local expected_rows="${#SAMPLES[@]}"
+    local actual_rows
+    local index
+    local manifest_index
+    local manifest_sample
+    local manifest_r1
+    local manifest_r2
+
+    actual_rows="$(( $(wc -l < "$manifest") - 1 ))"
+    (( actual_rows == expected_rows )) ||
+        die "Sample manifest changed: expected $expected_rows rows, found $actual_rows"
+    for index in "${!SAMPLES[@]}"; do
+        IFS=$'\t' read -r manifest_index manifest_sample manifest_r1 manifest_r2 < <(
+            sed -n "$((index + 2))p" "$manifest"
+        )
+        [[ "$manifest_index" == "$index" &&
+           "$manifest_sample" == "${SAMPLES[$index]}" &&
+           "$manifest_r1" == "${R1_PATHS[$index]}" &&
+           "$manifest_r2" == "${R2_PATHS[$index]}" ]] ||
+            die "Discovered FASTQs no longer match scheduler manifest row $index"
+    done
+}
+
+build_internal_arguments() {
+    local stage="$1"
+    local contrast
+
+    INTERNAL_ARGUMENTS=(
+        --assembly "$ASSEMBLY_REQUESTED"
+        --layout "$READ_LAYOUT"
+        --experiment "$EXPERIMENT_NAME"
+        --input "$READS_DIR"
+        --pipeline "$PIPELINE_MODE"
+        --executor local
+        --internal-stage "$stage"
+    )
+    [[ "$RESUME" == true ]] && INTERNAL_ARGUMENTS+=(--resume)
+    [[ -z "$MODULES_REQUESTED" ]] || INTERNAL_ARGUMENTS+=(--modules "$MODULES_REQUESTED")
+    [[ -z "$DESIGN_FILE" ]] || INTERNAL_ARGUMENTS+=(--design "$DESIGN_FILE")
+    for contrast in "${CONTRASTS[@]}"; do
+        INTERNAL_ARGUMENTS+=(--contrast "$contrast")
+    done
+}
+
+submit_slurm_pipeline() {
+    local profile="$SLURM_PROFILE"
+    local sample_count="${#SAMPLES[@]}"
+    local array_spec="0-$((sample_count - 1))"
+    local core_job_id
+    local cohort_job_id
+    local -a common_options=()
+    local -a core_command
+    local -a cohort_command
+
+    [[ -n "$profile" ]] || profile="${SCRIPT_DIR}/config/slurm.config"
+    [[ "$profile" == /* ]] || profile="${ROOT_DIR}/${profile}"
+    [[ -f "$profile" ]] ||
+        die "SLURM profile not found: $profile (copy config/slurm.config.example)"
+    # shellcheck disable=SC1090
+    source "$profile"
+
+    : "${SLURM_CORE_CPUS:?SLURM_CORE_CPUS is required}"
+    : "${SLURM_CORE_MEMORY:?SLURM_CORE_MEMORY is required}"
+    : "${SLURM_CORE_TIME:?SLURM_CORE_TIME is required}"
+    : "${SLURM_COHORT_CPUS:?SLURM_COHORT_CPUS is required}"
+    : "${SLURM_COHORT_MEMORY:?SLURM_COHORT_MEMORY is required}"
+    : "${SLURM_COHORT_TIME:?SLURM_COHORT_TIME is required}"
+    [[ "$SLURM_CORE_CPUS" =~ ^[1-9][0-9]*$ ]] || die "Invalid SLURM_CORE_CPUS"
+    [[ "$SLURM_COHORT_CPUS" =~ ^[1-9][0-9]*$ ]] || die "Invalid SLURM_COHORT_CPUS"
+    [[ "${SLURM_ARRAY_CONCURRENCY:-0}" =~ ^[0-9]+$ ]] ||
+        die "Invalid SLURM_ARRAY_CONCURRENCY"
+
+    [[ -z "${SLURM_PARTITION:-}" ]] || common_options+=(--partition "$SLURM_PARTITION")
+    [[ -z "${SLURM_ACCOUNT:-}" ]] || common_options+=(--account "$SLURM_ACCOUNT")
+    [[ -z "${SLURM_QOS:-}" ]] || common_options+=(--qos "$SLURM_QOS")
+    if declare -p SLURM_EXTRA_ARGS >/dev/null 2>&1; then
+        common_options+=("${SLURM_EXTRA_ARGS[@]}")
+    fi
+    if (( ${SLURM_ARRAY_CONCURRENCY:-0} > 0 )); then
+        array_spec+="%${SLURM_ARRAY_CONCURRENCY}"
+    fi
+
+    mkdir -p "${LOG_DIR}/slurm"
+    build_internal_arguments core-sample
+    core_command=("${SCRIPT_DIR}/slurm/run_stage.sh" "$profile" "${INTERNAL_ARGUMENTS[@]}" \
+        --sample-index __SLURM_ARRAY_TASK_ID__)
+
+    log_info "Submitting $sample_count core sample job(s) as SLURM array $array_spec"
+    if [[ "$DRY_RUN" == true ]]; then
+        printf '[DRY-RUN] '
+        printf '%q ' sbatch --parsable "${common_options[@]}" \
+            --job-name "nfrna-core-${EXPERIMENT_NAME//\//-}" \
+            --array "$array_spec" --cpus-per-task "$SLURM_CORE_CPUS" \
+            --mem "$SLURM_CORE_MEMORY" --time "$SLURM_CORE_TIME" \
+            --chdir "$ROOT_DIR" --output "${LOG_DIR}/slurm/core-%A_%a.out" \
+            --error "${LOG_DIR}/slurm/core-%A_%a.err" "${core_command[@]}"
+        printf '\n'
+        core_job_id="DRYRUN_CORE"
+    else
+        command -v sbatch >/dev/null 2>&1 || die "sbatch is not available"
+        core_job_id="$(sbatch --parsable "${common_options[@]}" \
+            --job-name "nfrna-core-${EXPERIMENT_NAME//\//-}" \
+            --array "$array_spec" --cpus-per-task "$SLURM_CORE_CPUS" \
+            --mem "$SLURM_CORE_MEMORY" --time "$SLURM_CORE_TIME" \
+            --chdir "$ROOT_DIR" --output "${LOG_DIR}/slurm/core-%A_%a.out" \
+            --error "${LOG_DIR}/slurm/core-%A_%a.err" "${core_command[@]}")"
+        core_job_id="${core_job_id%%;*}"
+    fi
+
+    build_internal_arguments cohort
+    cohort_command=("${SCRIPT_DIR}/slurm/run_stage.sh" "$profile" "${INTERNAL_ARGUMENTS[@]}")
+    log_info "Submitting cohort job after successful completion of array $core_job_id"
+    if [[ "$DRY_RUN" == true ]]; then
+        printf '[DRY-RUN] '
+        printf '%q ' sbatch --parsable "${common_options[@]}" \
+            --job-name "nfrna-cohort-${EXPERIMENT_NAME//\//-}" \
+            --dependency "afterok:${core_job_id}" --cpus-per-task "$SLURM_COHORT_CPUS" \
+            --mem "$SLURM_COHORT_MEMORY" --time "$SLURM_COHORT_TIME" \
+            --chdir "$ROOT_DIR" --output "${LOG_DIR}/slurm/cohort-%j.out" \
+            --error "${LOG_DIR}/slurm/cohort-%j.err" "${cohort_command[@]}"
+        printf '\n'
+        cohort_job_id="DRYRUN_COHORT"
+    else
+        cohort_job_id="$(sbatch --parsable "${common_options[@]}" \
+            --job-name "nfrna-cohort-${EXPERIMENT_NAME//\//-}" \
+            --dependency "afterok:${core_job_id}" --cpus-per-task "$SLURM_COHORT_CPUS" \
+            --mem "$SLURM_COHORT_MEMORY" --time "$SLURM_COHORT_TIME" \
+            --chdir "$ROOT_DIR" --output "${LOG_DIR}/slurm/cohort-%j.out" \
+            --error "${LOG_DIR}/slurm/cohort-%j.err" "${cohort_command[@]}")"
+        cohort_job_id="${cohort_job_id%%;*}"
+    fi
+
+    log_info "Core array job: $core_job_id"
+    log_info "Cohort job:     $cohort_job_id"
+    printf 'core_array\t%s\ncohort\t%s\n' "$core_job_id" "$cohort_job_id" \
+        > "${LOG_DIR}/slurm/submitted_jobs.tsv"
+}
+
+SAMPLE_MANIFEST="${LOG_DIR}/samples.tsv"
+if [[ "$INTERNAL_STAGE" == "all" ]]; then
+    if [[ "$RESUME" == true && -s "$SAMPLE_MANIFEST" ]]; then
+        validate_sample_manifest "$SAMPLE_MANIFEST"
+    else
+        write_sample_manifest "$SAMPLE_MANIFEST"
+    fi
+else
+    [[ -s "$SAMPLE_MANIFEST" ]] ||
+        die "Scheduler sample manifest is missing: $SAMPLE_MANIFEST"
+    validate_sample_manifest "$SAMPLE_MANIFEST"
+fi
+
+if [[ "$EXECUTOR" == "slurm" ]]; then
+    submit_slurm_pipeline
+    log_info "SLURM workflow submitted; results will complete asynchronously"
+    exit 0
+fi
+
 ################################################################################
 # 7. Process each sample
 ################################################################################
 
 CORE_READ_MANIFEST="${QC_DIR}/core_read_manifest.tsv"
 RRNA_SUMMARY="${QC_DIR}/rRNA_summary.tsv"
-printf 'sample\tread1\tread2\trrna_filtered\n' > "$CORE_READ_MANIFEST"
-printf 'sample\tinput_fragments\tretained_fragments\trrna_fragments\trrna_percent\n' > "$RRNA_SUMMARY"
 
-for index in "${!SAMPLES[@]}"; do
+run_core_sample() {
+    local index="$1"
+
     sample="${SAMPLES[$index]}"
     raw_r1="${R1_PATHS[$index]}"
     raw_r2="${R2_PATHS[$index]}"
     raw_reads=("$raw_r1")
+
+    if [[ "$RESUME" == true && -s "${RESULTS_DIR}/${sample}/.core_complete" ]]; then
+        log_info "Skipping completed sample: $sample"
+        return 0
+    fi
 
     if [[ "$READ_LAYOUT" == "paired" ]]; then
         raw_reads+=("$raw_r2")
@@ -1262,9 +1587,6 @@ for index in "${!SAMPLES[@]}"; do
         printf 'sample\tinput_fragments\tretained_fragments\trrna_fragments\trrna_percent\n%s\t%s\t%s\t%s\t%s\n' \
             "$sample" "$input_fragments" "$retained_fragments" "$rrna_fragments" "$rrna_percent" \
             > "$rrna_metrics"
-        printf '%s\t%s\t%s\t%s\t%s\n' \
-            "$sample" "$input_fragments" "$retained_fragments" "$rrna_fragments" "$rrna_percent" \
-            >> "$RRNA_SUMMARY"
         rrna_filtered=true
     fi
 
@@ -1272,8 +1594,6 @@ for index in "${!SAMPLES[@]}"; do
     if [[ "$READ_LAYOUT" == "paired" ]]; then
         analysis_reads+=("$analysis_r2")
     fi
-    printf '%s\t%s\t%s\t%s\n' "$sample" "$analysis_r1" "$analysis_r2" "$rrna_filtered" \
-        >> "$CORE_READ_MANIFEST"
 
     ########################################################################
     # 7.4 Analysis FASTQ quality control
@@ -1394,8 +1714,68 @@ for index in "${!SAMPLES[@]}"; do
     [[ -s "${rsem_prefix}.isoforms.results" ]] ||
         die "RSEM isoform results were not produced or are empty for sample: $sample"
 
+    completion_marker="${sample_results_dir}/.core_complete"
+    printf 'sample=%s\ncompleted_utc=%s\n' "$sample" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+        > "${completion_marker}.tmp.$$"
+    mv -f -- "${completion_marker}.tmp.$$" "$completion_marker"
     log_info "Completed sample: $sample"
+}
+
+if [[ "$INTERNAL_STAGE" == "core-sample" ]]; then
+    (( SAMPLE_INDEX < ${#SAMPLES[@]} )) ||
+        die "Sample index $SAMPLE_INDEX is outside the manifest range"
+    run_core_sample "$SAMPLE_INDEX"
+    log_info "SLURM array task completed for sample ${SAMPLES[$SAMPLE_INDEX]}"
+    exit 0
+elif [[ "$INTERNAL_STAGE" == "all" ]]; then
+    # Local execution remains sequential. The explicit per-sample function is
+    # the scheduling boundary used by the SLURM array backend.
+    for index in "${!SAMPLES[@]}"; do
+        run_core_sample "$index"
+    done
+fi
+
+# Shared files are generated by one process only: the local controller or the
+# dependency-gated cohort job. This avoids concurrent writes from array tasks.
+printf 'sample\tread1\tread2\trrna_filtered\n' > "$CORE_READ_MANIFEST"
+printf 'sample\tinput_fragments\tretained_fragments\trrna_fragments\trrna_percent\n' > "$RRNA_SUMMARY"
+for sample in "${SAMPLES[@]}"; do
+    if [[ "$READ_LAYOUT" == "paired" &&
+          -s "${RESULTS_DIR}/${sample}/rrna/${sample}_non_rRNA_R1.fastq.gz" &&
+          -s "${RESULTS_DIR}/${sample}/rrna/${sample}_non_rRNA_R2.fastq.gz" ]]; then
+        analysis_r1="${RESULTS_DIR}/${sample}/rrna/${sample}_non_rRNA_R1.fastq.gz"
+        analysis_r2="${RESULTS_DIR}/${sample}/rrna/${sample}_non_rRNA_R2.fastq.gz"
+        rrna_filtered=true
+    elif [[ "$READ_LAYOUT" == "single" &&
+            -s "${RESULTS_DIR}/${sample}/rrna/${sample}_non_rRNA.fastq.gz" ]]; then
+        analysis_r1="${RESULTS_DIR}/${sample}/rrna/${sample}_non_rRNA.fastq.gz"
+        analysis_r2=""
+        rrna_filtered=true
+    elif [[ "$READ_LAYOUT" == "paired" ]]; then
+        analysis_r1="${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed_R1.fastq.gz"
+        analysis_r2="${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed_R2.fastq.gz"
+        rrna_filtered=false
+    else
+        analysis_r1="${RESULTS_DIR}/${sample}/fastp/${sample}_trimmed.fastq.gz"
+        analysis_r2=""
+        rrna_filtered=false
+    fi
+    [[ -s "${RESULTS_DIR}/${sample}/.core_complete" ]] ||
+        die "Core completion marker is missing for sample: $sample"
+    printf '%s\t%s\t%s\t%s\n' "$sample" "$analysis_r1" "$analysis_r2" "$rrna_filtered" \
+        >> "$CORE_READ_MANIFEST"
+    rrna_metrics="${RESULTS_DIR}/${sample}/rrna/${sample}.rRNA_metrics.tsv"
+    if [[ -s "$rrna_metrics" ]]; then
+        tail -n +2 "$rrna_metrics" >> "$RRNA_SUMMARY"
+    fi
 done
+
+if [[ "$INTERNAL_STAGE" == "cohort" && -d "${LOG_DIR}/sample_timings" ]]; then
+    for timing_part in "${LOG_DIR}/sample_timings"/*.tsv; do
+        [[ -s "$timing_part" ]] || continue
+        tail -n +2 "$timing_part" >> "$TIMING_FILE"
+    done
+fi
 
 ################################################################################
 # 8. Validate sample QC and exclude failed samples

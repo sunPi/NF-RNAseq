@@ -79,5 +79,6 @@ repository path, and run both validation commands again. This detects Conda,
 filesystem, executable-bit, and shared-path differences between login and
 compute nodes before processing FASTQ files.
 
-SLURM execution support will be added separately; it will consume this same
-validated installation and reference contract.
+SLURM execution uses this same validated installation and reference contract.
+After the compute-node check, configure `config/slurm.config` and follow
+`docs/slurm_execution.md`.

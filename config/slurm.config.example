@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Copy to config/slurm.config and adapt these values for the target cluster.
+
+SLURM_PARTITION="compute"
+SLURM_ACCOUNT=""
+SLURM_QOS=""
+
+SLURM_CORE_CPUS=8
+SLURM_CORE_MEMORY="64G"
+SLURM_CORE_TIME="24:00:00"
+SLURM_COHORT_CPUS=4
+SLURM_COHORT_MEMORY="32G"
+SLURM_COHORT_TIME="08:00:00"
+
+# Limit the number of samples running concurrently. Zero means no limit.
+SLURM_ARRAY_CONCURRENCY=20
+
+# Commands needed on every compute node before main.sh is executed. For
+# example: module load miniconda/py310
+SLURM_JOB_SETUP=""
+
+# Additional sbatch options, one option per array element.
+SLURM_EXTRA_ARGS=()
