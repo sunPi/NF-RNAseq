@@ -114,6 +114,23 @@ Activate the environment:
 conda activate nf-env
 ```
 
+### ALICE batch scripts
+
+The standalone batch helpers do not require the experimental granular SLURM
+executor. Submit them from the repository root:
+
+```bash
+# Install GRCh38, GRCh37, and all implemented optional modules.
+sbatch install_NFRNASEQ.slurm
+
+# Run main.sh in one large allocation; normal main.sh arguments follow.
+sbatch run_NFRNASEQ.slurm \
+  --assembly GRCh38 --layout paired --experiment study_01 \
+  --input /shared/fastq/study_01 --pipeline core
+```
+
+Batch-run results are automatically grouped below `results/HPC/`.
+
 Run
 
 ```
