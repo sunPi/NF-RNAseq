@@ -29,6 +29,38 @@ die() {
 
 (( $# > 0 )) || die "No main.sh arguments supplied"
 
+# Keep scheduler-run experiments visibly separate from ordinary local runs.
+# Both --experiment NAME and --experiment=NAME forms are supported.
+RUN_ARGUMENTS=()
+EXPERIMENT_FOUND=false
+while (( $# > 0 )); do
+    case "$1" in
+        -e|--experiment)
+            (( $# >= 2 )) || die "Missing value after $1"
+            experiment="$2"
+            [[ -n "$experiment" ]] || die "Experiment name cannot be empty"
+            [[ "$experiment" == HPC/* ]] || experiment="HPC/${experiment}"
+            RUN_ARGUMENTS+=("$1" "$experiment")
+            EXPERIMENT_FOUND=true
+            shift 2
+            ;;
+        --experiment=*)
+            experiment="${1#*=}"
+            [[ -n "$experiment" ]] || die "Experiment name cannot be empty"
+            [[ "$experiment" == HPC/* ]] || experiment="HPC/${experiment}"
+            RUN_ARGUMENTS+=("--experiment=${experiment}")
+            EXPERIMENT_FOUND=true
+            shift
+            ;;
+        *)
+            RUN_ARGUMENTS+=("$1")
+            shift
+            ;;
+    esac
+done
+[[ "$EXPERIMENT_FOUND" == true ]] ||
+    die "An --experiment value is required so the run can be placed below results/HPC/"
+
 module purge
 module load gcc/12.3.0
 
@@ -69,10 +101,11 @@ log "Start time:   $(date --iso-8601=seconds)"
 log "Pipeline:     $PIPELINE_DIR"
 log "CPUs:         ${SLURM_CPUS_PER_TASK}"
 log "Memory:       200G"
-log "Arguments:    $*"
+printf -v DISPLAY_ARGUMENTS '%q ' "${RUN_ARGUMENTS[@]}"
+log "Arguments:    ${DISPLAY_ARGUMENTS% }"
 module list
 
-"$MAIN_SCRIPT" "$@"
+"$MAIN_SCRIPT" "${RUN_ARGUMENTS[@]}"
 
 log "Pipeline completed successfully"
 log "End time: $(date --iso-8601=seconds)"

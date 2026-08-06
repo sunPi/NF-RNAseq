@@ -197,9 +197,11 @@ sbatch run_NFRNASEQ.slurm \
 ```
 
 This wrapper requests one 16-CPU, 200-GB, 48-hour job and runs samples using
-the local sequential executor. Submit it from the repository directory. For
-sample-level arrays and dependency-managed cohort processing, use the
-integrated `--executor slurm` interface described below.
+the local sequential executor. It automatically prefixes the experiment with
+`HPC/`, so the example above writes to `results/HPC/study_01/`; ordinary local
+runs continue to use `results/<experiment>/`. Submit it from the repository
+directory. For sample-level arrays and dependency-managed cohort processing,
+use the integrated `--executor slurm` interface described below.
 
 Copy and edit the example scheduler profile once for the target cluster:
 
