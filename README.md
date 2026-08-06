@@ -184,6 +184,23 @@ The main outputs include:
 
 ### SLURM execution
 
+For a simple single-allocation ALICE run, pass the normal pipeline arguments
+directly through the supplied batch wrapper:
+
+```bash
+sbatch run_NFRNASEQ.slurm \
+  --assembly GRCh38 \
+  --layout paired \
+  --experiment study_01 \
+  --input /shared/fastq/study_01 \
+  --pipeline core
+```
+
+This wrapper requests one 16-CPU, 200-GB, 48-hour job and runs samples using
+the local sequential executor. Submit it from the repository directory. For
+sample-level arrays and dependency-managed cohort processing, use the
+integrated `--executor slurm` interface described below.
+
 Copy and edit the example scheduler profile once for the target cluster:
 
 ```bash
