@@ -47,6 +47,10 @@
 !/modules/sarsig/**
 !/modules/ssgsva/
 !/modules/ssgsva/**
+!/modules/trust4/
+!/modules/trust4/**
+!/modules/telescope/
+!/modules/telescope/**
 
 # Generated Python bytecode
 __pycache__/

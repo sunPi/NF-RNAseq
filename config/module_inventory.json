@@ -543,7 +543,8 @@
       "id": "trust4",
       "category": "fastq_bam",
       "execution_scope": "hybrid",
-      "status": "planned",
+      "status": "implemented",
+      "upstream_repository": "https://github.com/liulab-dfci/TRUST4",
       "summary": "Reconstruct TCR and BCR repertoires and aggregate cohort clonotype and repertoire summaries.",
       "requires_design": false,
       "requires_contrast": false,
@@ -631,7 +632,7 @@
       "id": "telescope",
       "category": "fastq_bam",
       "execution_scope": "hybrid",
-      "status": "planned",
+      "status": "implemented",
       "summary": "Resolve multimapping RNA-seq reads to specific transposable-element loci and aggregate locus-level TE expression across the cohort.",
       "upstream_repository": "https://github.com/mlbendall/telescope",
       "requires_design": false,
@@ -660,7 +661,7 @@
       ],
       "notes": [
         "Telescope complements TEtranscripts by resolving expression at individual TE loci rather than primarily at TE-family level.",
-        "The future implementation must define a shared multimapping-aware alignment contract for both TE modules."
+        "The core STAR genomic BAM retains multimapping alignments and is name-collated before Telescope assignment."
       ]
     },
     {

@@ -235,7 +235,7 @@ duplicate gene symbols using the highest-expression locus by default after annot
 Canonical Ensembl-ID count matrices are retained unchanged.
 
 The fusion, isoform-aggregation, DGE, ranked GSEA, sample-level ssGSVA, GO,
-decoupleR, HyTEsum, and SarSig modules are currently available.
+decoupleR, HyTEsum, SarSig, TRUST4, and Telescope modules are currently available.
 Install the required module before selecting it at runtime:
 
 ```
@@ -245,6 +245,7 @@ Install the required module before selecting it at runtime:
 ./install_pipe.sh --add-modules gsea --assembly GRCh38
 ./install_pipe.sh --add-modules ssgsva --assembly GRCh38
 ./install_pipe.sh --add-modules go,decoupler,hytesum,sarsig --assembly GRCh38
+./install_pipe.sh --add-modules trust4,telescope --assembly GRCh38
 ./install_pipe.sh --add-modules all --assembly GRCh38
 ```
 
@@ -268,6 +269,12 @@ ssGSVA calculates per-sample ssGSEA and GSVA pathway scores without requiring
 a design. When design contrasts are supplied, it also calculates differential
 pathway-score statistics under `results/<experiment>/matrices/ssGSVA/`.
 
+TRUST4 reconstructs bulk TCR/BCR repertoires from the core analysis FASTQs and
+writes cohort clonotype count and frequency matrices under
+`results/<experiment>/matrices/TRUST4/`. Telescope name-collates the core STAR
+BAM, assigns multimapping reads to assembly-matched HERV/LINE-1 loci, and writes
+the cohort locus matrix under `results/<experiment>/matrices/Telescope/`.
+
 Use `--modules all` to run every installed optional module, or provide a
 comma-separated selection as more modules become available.
 
@@ -278,7 +285,6 @@ Core Module 1.0:
  - Immune-cell deconvolution Sturm G, Finotello F, List M. Immunedeconv: An R Package for Unified Access to Computational Methods for Estimating Immune Cell Fractions from Bulk RNA-Sequencing Data. Methods Mol Biol. 2020;2120:223-232. doi: 10.1007/978-1-0716-0327-7_16. PMID: 32124323.
  - ssGSEA pathway analysis Barbie, D., Tamayo, P., Boehm, J. et al. Systematic RNA interference reveals that oncogenic KRAS-driven cancers require TBK1. Nature 462, 108–112 (2009). https://doi.org/10.1038/nature08460
  - Transcription-factor activity inference with decoupleR
- - TRUST4 immune-repertoire analysis Song, L., Cohen, D., Ouyang, Z. et al. TRUST4: immune repertoire reconstruction from bulk and single-cell RNA-seq data. Nat Methods 18, 627–630 (2021). https://doi.org/10.1038/s41592-021-01142-2
  - Additional variant-analysis modules
  - DecoupleR Badia-i-Mompel P., Vélez Santiago J., Braunger J., Geiss C., Dimitrov D., Müller-Dott S., Taus P., Dugourd A., Holland C.H., Ramirez Flores R.O. and Saez-Rodriguez J. 2022. decoupleR: Ensemble of computational methods to infer biological activities from omics data. Bioinformatics Advances.   https://doi.org/10.1093/bioadv/vbac016
 

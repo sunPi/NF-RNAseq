@@ -364,6 +364,7 @@ SELECTED_MODULES=()
 declare -A MODULE_SCOPES=()
 declare -A MODULE_REQUIRES_DESIGN=()
 declare -A MODULE_REQUIRES_CONTRASTS=()
+declare -A MODULE_NEEDS_BAM=()
 declare -A MODULE_OUTPUT_NAMES=()
 
 resolve_selected_modules() {
@@ -375,6 +376,7 @@ resolve_selected_modules() {
     local module_requires_design
     local module_requires_contrasts
     local module_output_name
+    local module_requires_bam
     local -a requested_list=()
     local -A seen_modules=()
 
@@ -418,12 +420,14 @@ resolve_selected_modules() {
         MODULE_REQUIRES_DESIGN=""
         MODULE_REQUIRES_CONTRASTS=""
         MODULE_OUTPUT_NAME=""
+        MODULE_REQUIRES_BAM="false"
         # shellcheck disable=SC1090
         source "$module_metadata"
         module_scope="${MODULE_SCOPE:-}"
         module_requires_design="${MODULE_REQUIRES_DESIGN:-false}"
         module_requires_contrasts="${MODULE_REQUIRES_CONTRASTS:-false}"
         module_output_name="${MODULE_OUTPUT_NAME:-$module_name}"
+        module_requires_bam="${MODULE_REQUIRES_BAM:-false}"
         [[ "$module_scope" == "sample" ||
            "$module_scope" == "cohort" ||
            "$module_scope" == "hybrid" ]] ||
@@ -434,6 +438,8 @@ resolve_selected_modules() {
         [[ "$module_requires_contrasts" == "true" ||
            "$module_requires_contrasts" == "false" ]] ||
             die "Invalid MODULE_REQUIRES_CONTRASTS for '$module_name'"
+        [[ "$module_requires_bam" == "true" || "$module_requires_bam" == "false" ]] ||
+            die "Invalid MODULE_REQUIRES_BAM for '$module_name'"
         [[ "$module_output_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] ||
             die "Invalid MODULE_OUTPUT_NAME for '$module_name': $module_output_name"
         if [[ "$module_scope" == "sample" || "$module_scope" == "hybrid" ]]; then
@@ -460,6 +466,7 @@ resolve_selected_modules() {
         MODULE_REQUIRES_DESIGN["$module_name"]="$module_requires_design"
         MODULE_REQUIRES_CONTRASTS["$module_name"]="$module_requires_contrasts"
         MODULE_OUTPUT_NAMES["$module_name"]="$module_output_name"
+        MODULE_NEEDS_BAM["$module_name"]="$module_requires_bam"
     done
 
     (( ${#SELECTED_MODULES[@]} > 0 )) ||
@@ -591,6 +598,7 @@ run_selected_modules() {
     local index
     local sample
     local contrast
+    local module_bam
     local -a module_arguments
     local -a aggregate_arguments
     local -a cohort_arguments
@@ -614,6 +622,12 @@ run_selected_modules() {
                 )
                 if [[ "$READ_LAYOUT" == "paired" ]]; then
                     module_arguments+=(--read2 "${R2_PATHS[$index]}")
+                fi
+                if [[ "${MODULE_NEEDS_BAM[$module_name]}" == true ]]; then
+                    module_bam="${RESULTS_DIR}/${sample}/star/${sample}.Aligned.sortedByCoord.out.bam"
+                    [[ -s "$module_bam" ]] ||
+                        die "Module '$module_name' requires the core genomic BAM: $module_bam"
+                    module_arguments+=(--bam "$module_bam")
                 fi
 
                 log_info "Running optional module '$module_name' for $sample"
