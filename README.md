@@ -184,6 +184,13 @@ The main outputs include:
 
 ### SLURM execution
 
+Install both supported assemblies and all implemented modules through an
+ALICE batch allocation by submitting from the repository root:
+
+```bash
+sbatch install_NFRNASEQ.slurm
+```
+
 For a simple single-allocation ALICE run, pass the normal pipeline arguments
 directly through the supplied batch wrapper:
 
