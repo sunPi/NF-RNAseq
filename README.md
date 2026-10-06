@@ -160,7 +160,7 @@ On a Linux desktop with Python 3 and Tkinter, launch the window from the
 repository root:
 
 ```bash
-python3 nf_rnaseq_ui.py
+python3 ui/nf_rnaseq_ui.py
 ```
 
 The minimal Linux launcher can also open the same UI without typing the
@@ -168,13 +168,13 @@ Python command. Build it once on the target machine, then run it from the
 repository root:
 
 ```bash
-bash launcher/build.sh
-./NFRNASEQ
+bash ui/launcher/build.sh
+./ui/NFRNASEQ
 ```
 
 `NFRNASEQ` is a native launcher, not a bundled Python application. Keep it
-beside `nf_rnaseq_ui.py`; Python 3 and Tkinter must still be installed. The
-source is `launcher/NFRNASEQ.c`, so it can be rebuilt for the target Linux
+beside `ui/nf_rnaseq_ui.py`; Python 3 and Tkinter must still be installed. The
+source is `ui/launcher/NFRNASEQ.c`, so it can be rebuilt for the target Linux
 machine.
 
 The window lets you choose a project, reference assembly, read layout, core

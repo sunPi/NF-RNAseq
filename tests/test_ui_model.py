@@ -2,7 +2,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from ui_model import build_command
+from ui.ui_model import build_command
 
 
 class UiModelTests(unittest.TestCase):
