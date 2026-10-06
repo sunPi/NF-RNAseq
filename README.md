@@ -163,6 +163,20 @@ repository root:
 python3 nf_rnaseq_ui.py
 ```
 
+The minimal Linux launcher can also open the same UI without typing the
+Python command. Build it once on the target machine, then run it from the
+repository root:
+
+```bash
+bash launcher/build.sh
+./NFRNASEQ
+```
+
+`NFRNASEQ` is a native launcher, not a bundled Python application. Keep it
+beside `nf_rnaseq_ui.py`; Python 3 and Tkinter must still be installed. The
+source is `launcher/NFRNASEQ.c`, so it can be rebuilt for the target Linux
+machine.
+
 The window lets you choose a project, reference assembly, read layout, core
 processing or module analysis, FASTQ folder, optional modules, design file,
 and contrasts. Preview the command before running it; output streams into the
