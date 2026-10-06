@@ -19,11 +19,26 @@ die() { printf '[NF-RNAseq job] ERROR: %s\n' "$*" >&2; exit 1; }
 
 (( $# > 0 )) || die "No main.sh arguments supplied"
 
-# Keep scheduler-run experiments separate under results/HPC/.
+# Keep scheduler-run projects and experiments separate under results/HPC/.
 RUN_ARGUMENTS=()
 EXPERIMENT_FOUND=false
+PROJECT_FOUND=false
 while (( $# > 0 )); do
     case "$1" in
+        --project)
+            (( $# >= 2 )) || die "Missing value after $1"
+            [[ -n "$2" ]] || die "Project name cannot be empty"
+            RUN_ARGUMENTS+=("--experiment" "HPC/$2")
+            PROJECT_FOUND=true
+            shift 2
+            ;;
+        --project=*)
+            project="${1#*=}"
+            [[ -n "$project" ]] || die "Project name cannot be empty"
+            RUN_ARGUMENTS+=("--experiment=HPC/${project}")
+            PROJECT_FOUND=true
+            shift
+            ;;
         -e|--experiment)
             (( $# >= 2 )) || die "Missing value after $1"
             experiment="$2"
@@ -47,8 +62,10 @@ while (( $# > 0 )); do
             ;;
     esac
 done
-[[ "$EXPERIMENT_FOUND" == true ]] ||
-    die "An --experiment value is required so the run can be placed below results/HPC/"
+[[ "$PROJECT_FOUND" != true || "$EXPERIMENT_FOUND" != true ]] ||
+    die "Use either --project or --experiment, not both"
+[[ "$EXPERIMENT_FOUND" == true || "$PROJECT_FOUND" == true ]] ||
+    die "A --project or --experiment value is required"
 
 module purge
 module load gcc/12.3.0

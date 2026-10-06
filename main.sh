@@ -49,12 +49,12 @@ usage() {
     cat <<EOF
 Usage:
   $(basename "$0") --assembly <ASSEMBLY> --layout <single|paired> \\
-    --experiment <PATH> --input <DIRECTORY> [--pipeline core|optional] \\
+    --project <NAME> --input <DIRECTORY> [--pipeline core|optional] \\
     [--modules all|MODULE[,MODULE...]] [--design FILE] \\
     [--contrast FACTOR:NUMERATOR:DENOMINATOR]
 
   $(basename "$0") --assembly <ASSEMBLY> --layout <single|paired> \\
-    --experiment <PATH> --pipeline modules \\
+    --project <NAME> --pipeline modules \\
     [--modules all|MODULE[,MODULE...]]
 
   $(basename "$0") prepare-samples --input <DIRECTORY> \\
@@ -64,6 +64,7 @@ Options:
   -a, --assembly NAME    Reference assembly: GRCh37, hg19, GRCh38, or hg38
   -l, --layout TYPE      Sequencing layout: single or paired
   -e, --experiment PATH  Experiment path used under results/PATH
+      --project NAME     Project name used under results/NAME; replaces --experiment
   -i, --input DIRECTORY  Directory containing FASTQ files; searched recursively
   -p, --pipeline MODE    core, optional, or modules; default: core
   -m, --modules VALUE    all or a comma-separated optional-module list
@@ -84,7 +85,7 @@ Examples:
     --experiment pilot_run --input /data/pilot_fastq \\
     --pipeline optional --modules all
   $(basename "$0") --assembly GRCh38 --layout single \\
-    --experiment pilot_run --pipeline modules --modules fusion
+    --project UVM_KOKI --pipeline modules --modules fusion
 
 Paired-end names must be NAME_1.fastq.gz and NAME_2.fastq.gz (or .fq.gz).
 Results for each pair are written below results/PATH/NAME/.
@@ -99,6 +100,9 @@ EOF
 ASSEMBLY_REQUESTED=""
 READ_LAYOUT=""
 EXPERIMENT_NAME=""
+PROJECT_NAME=""
+EXPERIMENT_PROVIDED=false
+PROJECT_PROVIDED=false
 INPUT_DIR_REQUESTED=""
 PIPELINE_MODE="core"
 MODULES_REQUESTED=""
@@ -139,11 +143,26 @@ while (( $# > 0 )); do
                 die "Missing value after $1"
 
             EXPERIMENT_NAME="$2"
+            EXPERIMENT_PROVIDED=true
             shift 2
             ;;
 
         --experiment=*)
             EXPERIMENT_NAME="${1#*=}"
+            EXPERIMENT_PROVIDED=true
+            shift
+            ;;
+
+        --project)
+            [[ $# -ge 2 ]] || die "Missing value after $1"
+            PROJECT_NAME="$2"
+            PROJECT_PROVIDED=true
+            shift 2
+            ;;
+
+        --project=*)
+            PROJECT_NAME="${1#*=}"
+            PROJECT_PROVIDED=true
             shift
             ;;
 
@@ -229,8 +248,18 @@ done
 [[ "$READ_LAYOUT" == "single" || "$READ_LAYOUT" == "paired" ]] ||
     die "Invalid or missing layout. Use --layout single or --layout paired"
 
+[[ "$PROJECT_PROVIDED" != true || "$EXPERIMENT_PROVIDED" != true ]] ||
+    die "Use either --project or --experiment, not both"
+
+if [[ "$PROJECT_PROVIDED" == true ]]; then
+    [[ "$PROJECT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ &&
+       "$PROJECT_NAME" != "." && "$PROJECT_NAME" != ".." ]] ||
+        die "Invalid project name '$PROJECT_NAME'. Use one folder name with letters, numbers, dots, underscores, or hyphens"
+    EXPERIMENT_NAME="$PROJECT_NAME"
+fi
+
 [[ -n "$EXPERIMENT_NAME" ]] ||
-    die "No experiment name specified. Use --experiment NAME"
+    die "No project specified. Use --project NAME (or --experiment PATH)"
 
 case "$PIPELINE_MODE" in
     core)

@@ -131,6 +131,47 @@ sbatch run_NFRNASEQ.slurm \
 
 Batch-run results are automatically grouped below `results/HPC/`.
 
+### Projects
+
+Select a project on every run with `--project NAME`. All results and the run
+history go under `results/NAME/`. Reuse the same name for later analyses:
+
+```bash
+./main.sh --assembly GRCh38 --layout paired --project UVM_KOKI \
+  --input /path/to/koki_fastq --pipeline core
+./main.sh --assembly GRCh38 --layout paired --project UVM_KOKI \
+  --pipeline modules --modules dge --design koki.design.tsv \
+  --contrast condition:treated:control
+./main.sh --assembly GRCh38 --layout paired --project UVM_TGFB \
+  --input /path/to/tgfb_fastq --pipeline core
+```
+
+These create separate `results/UVM_KOKI/` and `results/UVM_TGFB/` folders.
+Project names are single folder names using letters, numbers, dots, underscores,
+or hyphens. There is no global active project; each command states its target.
+The existing `--experiment` option remains available, but cannot be combined
+with `--project`. Modules-only runs require core results in the selected
+project. SLURM submissions with `--project UVM_KOKI` write under
+`results/HPC/UVM_KOKI/`.
+
+### Desktop launcher
+
+On a Linux desktop with Python 3 and Tkinter, launch the window from the
+repository root:
+
+```bash
+python3 nf_rnaseq_ui.py
+```
+
+The window lets you choose a project, reference assembly, read layout, core
+processing or module analysis, FASTQ folder, optional modules, design file,
+and contrasts. Preview the command before running it; output streams into the
+window and the project run history is written by `main.sh`. Module-only mode
+uses an existing project's core results and does not need the FASTQ folder.
+The pipeline must be installed and its Conda environment activated before a
+run. The UI runs locally on the desktop; for a cluster job, submit the SLURM
+script from a terminal.
+
 Run
 
 ```
